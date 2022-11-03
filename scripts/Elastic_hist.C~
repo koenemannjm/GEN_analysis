@@ -1,0 +1,16 @@
+
+
+
+
+
+void Elastic_hist(TString cfg="H2"){
+
+
+  TFile *file = new TFile("elastic_temp_" + cfg + ".root","read");
+  
+  TH2D *hdxdy_Wcut = (TH2D*)file->Get("hdxdy_Wcut");
+
+  hdxdy_Wcut->Draw();
+
+
+}
