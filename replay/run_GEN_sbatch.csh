@@ -43,7 +43,7 @@ set maxsegments=$6
 #echo $cmd
 
 #analyzer -q
-analyzer  -q 'replay_gen.C+('$runnum','$maxevents','$firstevent','\"$prefix\"','$firstsegment','$maxsegments',2,1,1,0)'
+analyzer  -q 'replay_gen.C+('$runnum','$maxevents','$firstevent','\"$prefix\"','$firstsegment','$maxsegments',2,0,1,0)'
 #analyzer  -q 'replay_gen_helicity_test.C+('$runnum','$maxevents','$firstevent','\"$prefix\"','$firstsegment','$maxsegments',2,0,0,0,0)'
 #analyzer  -q 'replay_all_GEMs.C+('$runnum','$firstsegment','$maxsegments','\"$prefix\"','$firstevent','$maxevents',1)'
 #analyzer  -q 'replay_SBSGEM.C+('$runnum','$maxevents','$firstevent','\"$prefix\"','$firstsegment','$maxsegments')'

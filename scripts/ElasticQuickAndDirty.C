@@ -9,14 +9,38 @@
 #include "TVector3.h"
 #include "TMath.h"
 
-void ElasticQuickAndDirty( TString cfg, double Ebeam=4.291, double bbtheta=29.5, double sbstheta=34.7, double sbsdist=2.8, double hcaldist=17.0, double sbsfieldscale=1.0){
 
-  sbstheta *= TMath::Pi()/180.0;
-  bbtheta *= TMath::Pi()/180.0;
+TChain *C = new TChain("T");
+TCut globalcut="";
+double Ebeam;
+double bbtheta;
+double sbstheta;
+double sbsdist;
+double hcaldist;
+double sbsfieldscale;
+double px_mean;
+double px_sigma;
+double nx_mean;
+double nx_sigma;
+double py_mean;
+double py_sigma;
+double ny_mean;
+double ny_sigma;
+int nsigma;
 
-  ifstream configfile("GEN2_" + cfg + ".cfg");
 
-  TChain *C = new TChain("T");
+void LoadConfig(TString cfg_name){
+  
+  ifstream configfile(cfg_name);
+
+  //so as usual the main things to define are:
+  // 1. List of files
+  // 2. Global cuts
+  // 3. Nominal beam energy (perhaps corrected for average energy loss along half target thickness
+  // 4. File name for old momentum coefficients (optional?)
+  // 5. BigBite central angle
+  // 6. SBS central angle
+  // 7. HCAL distance
 
   TString currentline;
 
@@ -26,8 +50,118 @@ void ElasticQuickAndDirty( TString cfg, double Ebeam=4.291, double bbtheta=29.5,
       C->Add(currentline);
     }
   }
+  
+  while( currentline.ReadLine( configfile ) && !currentline.BeginsWith("endcut") ){
+    if( !currentline.BeginsWith("#") ){
+      globalcut += currentline;
+    }
+  }
 
-  TCut globalcut = "bb.ps.e>0.15&&abs(bb.tr.vz)<0.27&&sbs.hcal.nclus>0&&bb.tr.n==1";
+
+  while( currentline.ReadLine( configfile ) && !currentline.BeginsWith("endconfig") ){
+    if( !currentline.BeginsWith("#") ){
+      TObjArray *tokens = currentline.Tokenize(" ");
+
+      int ntokens = tokens->GetEntries();
+
+      if( ntokens >= 2 ){
+	TString skey = ( (TObjString*) (*tokens)[0] )->GetString();
+
+	if( skey == "Ebeam" ){
+	  TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	  Ebeam = stemp.Atof();
+	}
+
+	if( skey == "bbtheta" ){
+	  TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	  bbtheta = stemp.Atof();
+	}
+
+	if( skey == "sbstheta" ){
+	  TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	  sbstheta = stemp.Atof();
+	}
+
+	if( skey == "sbsdist" ){
+	  TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	  sbsdist = stemp.Atof();
+	}
+	
+	if( skey == "hcaldist" ){
+	  TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	  hcaldist = stemp.Atof();
+	}
+
+	if( skey == "sbsfieldscale" ){
+	  TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	  sbsfieldscale = stemp.Atof();
+	}
+
+	if( skey == "proton_x_mean" ){
+	  TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	  px_mean = stemp.Atof();
+	}
+
+	if( skey == "proton_x_sigma" ){
+	  TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	  px_sigma = stemp.Atof();
+	}
+
+	if( skey == "neutron_x_mean" ){
+	  TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	  nx_mean = stemp.Atof();
+	}
+
+	if( skey == "neutron_x_sigma" ){
+	  TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	  nx_sigma = stemp.Atof();
+	}
+
+	if( skey == "proton_y_mean" ){
+	  TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	  py_mean = stemp.Atof();
+	}
+
+	if( skey == "proton_y_sigma" ){
+	  TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	  py_sigma = stemp.Atof();
+	}
+
+	if( skey == "neutron_y_mean" ){
+	  TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	  ny_mean = stemp.Atof();
+	}
+
+	if( skey == "neutron_y_sigma" ){
+	  TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	  ny_sigma = stemp.Atof();
+	}
+
+	if( skey == "nsigma_cut" ){
+	  TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	  nsigma = stemp.Atoi();
+	}
+	
+      }	
+      
+      tokens->Delete();
+    }
+  }
+
+
+}
+
+
+
+void ElasticQuickAndDirty(TString cfg){
+
+  TString configfile = "../config/GEN2.cfg";
+
+  LoadConfig(configfile);
+
+  sbstheta *= TMath::Pi()/180.0;
+  bbtheta *= TMath::Pi()/180.0;
+
   
   TEventList *elist = new TEventList("elist","");
   
@@ -80,27 +214,6 @@ void ElasticQuickAndDirty( TString cfg, double Ebeam=4.291, double bbtheta=29.5,
   double W2min = 0.88-0.4;
   double W2max = 0.88+0.4;
 
-  double np_xcut = -1.0;
-  double nsigma = 1;
-
-  double px_mean = -2.379;
-  double px_sigma = 0.629;
-  double nx_mean = 0.259;
-  double nx_sigma = 0.782;
-
-  double py_mean = -0.193;
-  double py_sigma = 0.624;
-  double ny_mean = -0.285;
-  double ny_sigma = 0.773;
-
-  
-  if(cfg == "H2"){
-    nsigma = 1;
-    px_mean = -2.43;
-    px_sigma = 0.299;
-    py_mean = -0.095;
-    py_sigma = 0.445;
-  }
 
   TFile *fout = new TFile("elastic_temp_" + cfg + ".root","RECREATE");
 
