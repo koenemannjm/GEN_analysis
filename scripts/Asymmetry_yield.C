@@ -1,69 +1,77 @@
-#include "TChain.h"
-#include "TTree.h"
-#include "TFile.h"
-#include "TH1D.h"
-#include "TH2D.h"
+
+#include <vector>
+#include <iostream>
+
 #include "TCut.h"
-#include "TEventList.h"
-#include "TLorentzVector.h"
+#include "TH1F.h"
+#include "TLatex.h"
+#include "TChain.h"
 #include "TVector3.h"
-#include "TMath.h"
+#include "TStopwatch.h"
+#include "TTreeFormula.h"
+#include "TLorentzVector.h"
+
 #include "../include/gen-ana.h"
+#include "../dflay/src/JSONManager.cxx"
 
+void Asymmetry_yield(const char *configfilename,std::string filebase="outfiles/QE_test")
+{
+  gErrorIgnoreLevel = kError; // Ignores all ROOT warnings
 
+  // Define a clock to get macro processing time
+  TStopwatch *sw = new TStopwatch(); sw->Start();
 
+  // reading input config file ---------------------------------------
+  JSONManager *jmgr = new JSONManager(configfilename);
 
+  // seting up the desired SBS configuration
+  int conf = jmgr->GetValueFromKey<int>("GEN_config");
+  int sbsmag = jmgr->GetValueFromKey<int>("SBS_magnet_percent");
+  SBSconfig sbsconf(conf, sbsmag);
+  sbsconf.Print();
 
+  // choosing nucleon type 
+  std::string Ntype = jmgr->GetValueFromKey_str("Ntype");
 
-void Asymmetry_yield(TString cfg){
+  int model = jmgr->GetValueFromKey<int>("model");
 
-  TString configfile = "../config/" + cfg;
+  TString inFile = Form("%s_GEN%d_sbs%dp_nucleon_%s_model%d_data.root", 
+			 filebase.c_str(), sbsconf.GetSBSconf(),  sbsconf.GetSBSmag(), Ntype.c_str(), model);
+  TFile *fin = new TFile(inFile.Data(), "read");
+  TTree *T = (TTree*)fin->Get("Tout");
 
-  LoadConfig(configfile);
-  
-  sbstheta *= constant::pi/180.0;
-  bbtheta *= constant::pi/180.0;
-  
-  ifstream runlist("../config/GEN2_run_list.cfg");
+  T->SetBranchStatus("*",0);
 
-  TString run;
-  TString Rootfiles = "/lustre19/expphy/volatile/halla/sbs/jeffas/GEN_root/Rootfiles/GEN2/He3/";
-  
-  vector<TString> run_list;
-  vector<double> helicity_ratio;
-  
-  
-  int MAXNTRACKS=10;
-  
-  //variables we need are BigBite track px,py,pz and sbs hcal x, y, e
-  
-  double ntrack;
-  
-  double epx[MAXNTRACKS];
-  double epy[MAXNTRACKS];
-  double epz[MAXNTRACKS];
-  double ep[MAXNTRACKS];
-  
-  double vx[MAXNTRACKS];
-  double vy[MAXNTRACKS];
-  double vz[MAXNTRACKS];
-  
-  double xhcal,yhcal,ehcal,ps_e;
-  double helicity, IHWP;
+  int runnum;   setrootvar::setbranch(T,"runnum","",&runnum);
+  bool WCut;   setrootvar::setbranch(T,"WCut","",&WCut);
+  bool pCut;   setrootvar::setbranch(T,"pCut","",&pCut);
+  bool nCut;   setrootvar::setbranch(T,"nCut","",&nCut);
+  bool coinCut;   setrootvar::setbranch(T,"coinCut","",&coinCut);
+  double dx;   setrootvar::setbranch(T,"dx","",&dx);
+  double dy;   setrootvar::setbranch(T,"dy","",&dy);
+  double coin_time;   setrootvar::setbranch(T,"coinT_trig","",&coin_time);
+  int helicity;   setrootvar::setbranch(T,"helicity","",&helicity);
+  int IHWP;   setrootvar::setbranch(T,"IHWP","",&IHWP);
 
-  TVector3 hcal_origin( -hcaldist*sin(sbstheta), 0, hcaldist*cos(sbstheta) );
-  
-  TVector3 hcal_zaxis = hcal_origin.Unit();
-  TVector3 hcal_xaxis(0,-1,0);
-  TVector3 hcal_yaxis = hcal_zaxis.Cross( hcal_xaxis ).Unit();
-  
+  //For all runs
   int Yp_n_total = 0;
   int Ym_n_total = 0;
   int ncut_n_total = 0;
   int Yp_p_total = 0;
   int Ym_p_total = 0;
   int ncut_p_total = 0;
-  int nevents_total = 0;
+
+  //Y+ and Y- neutron helicity yields
+  //For individual runs
+  int Yp_n = 0;
+  int Ym_n = 0;
+  int ncut_n = 0;
+  
+  //Y+ and Y- proton helicity yields
+  //For individual runs
+  int Yp_p = 0;
+  int Ym_p = 0;
+  int ncut_p = 0;
 
   vector<double> runs;
   vector<double> A_n;
@@ -71,156 +79,74 @@ void Asymmetry_yield(TString cfg){
   vector<double> A_p;
   vector<double> A_p_err;
 
-  TString currentline;
-  while( currentline.ReadLine( runlist ) && !currentline.BeginsWith("endlist") ){
-    if( !currentline.BeginsWith("#") ){
-      TObjArray *tokens = currentline.Tokenize(" ");
-      
-      int ntokens = tokens->GetEntries();
-      if( ntokens == 1 ){
-	TString skey = ( (TObjString*) (*tokens)[0] )->GetString();
-	run = skey;
+  int nevent = 0;
+  int currentrunnum = -1;
 
-	TChain *T = new TChain("T");
-	
-	T->Add(Rootfiles + "/good_helicity/e1209016_fullreplay_*" + run + "*");
-	
-	TEventList *elist = new TEventList("elist","");
-	
-	T->Draw(">>elist",globalcut);
-		
-	T->SetBranchStatus("*",0);
-	
-	std::vector<std::string> trvar = {"n","vz","px","py","pz","p"};
-	std::vector<void*> trvar_mem = {&ntrack,&vz,&epx,&epy,&epz,&ep};
-	setrootvar::setbranch(T,"bb.tr",trvar,trvar_mem);
-	
-	std::vector<std::string> hcalvar = {"x","y","e"};
-	std::vector<void*> hcalvar_mem = {&xhcal,&yhcal,&ehcal};
-	setrootvar::setbranch(T,"sbs.hcal",hcalvar,hcalvar_mem);
-	
-	std::vector<std::string> helicityvar = {"hel"};
-	std::vector<void*> helicityvar_mem = {&helicity};
-	setrootvar::setbranch(T,"scalhel",helicityvar,helicityvar_mem);
-	
-	std::string bbcalvar = "e";
-	void* bbcalvar_mem = &ps_e;
-	setrootvar::setbranch(T,"bb.ps",bbcalvar,bbcalvar_mem);
-	
-	string hallvar = "IGL1I00OD16_16"; //1 is IN, 0 is OUT
-	void* hallvar_mem = &IHWP;
-	setrootvar::setbranch(T,hallvar,"",hallvar_mem);
-	
-	
-	TLorentzVector Pbeam(0,0,Ebeam,Ebeam);
-	TLorentzVector Ptarg(0,0,0,0.5*(0.938272+0.939565));
+  while(T->GetEntry(nevent++)){
 
-	long nevent=0;
-		
-	int ntotal = T->GetEntries();
-	nevents_total += ntotal;
-	cout<<ntotal<<" events found"<<endl;
-	
+    if(WCut){
+      if(IHWP == 1) helicity *= 1;
+      else if(IHWP == -1) helicity *= -1;
+      else continue;
 
-	//Y+ and Y- neutron helicity yields
-	int Yp_n = 0;
-	int Ym_n = 0;
-	int ncut_n = 0;
-
-	//Y+ and Y- proton helicity yields
-	int Yp_p = 0;
-	int Ym_p = 0;
-	int ncut_p = 0;
-	
-
-	
-	while( T->GetEntry(elist->GetEntry(nevent++)) ){
-	  //if(nevent % 100000 == 0) cout<<nevent<<endl;
-	  
-	  if( ntrack == 1.0 ){
-	    TLorentzVector kprime( epx[0], epy[0], epz[0], ep[0] );
-	    TLorentzVector q = Pbeam - kprime;
-	    
-	    TVector3 qdir = q.Vect().Unit();
-	    
-	    TVector3 vertex(0,0,vz[0]);
-	    
-	    double sintersect = (hcal_origin-vertex).Dot( hcal_zaxis )/qdir.Dot( hcal_zaxis );
-
-	    TVector3 hcal_intersect = vertex + sintersect * qdir; 
-	    
-	    double xhcal_expect = hcal_intersect.Dot( hcal_xaxis );
-	    double yhcal_expect = hcal_intersect.Dot( hcal_yaxis );
-	    
-	    double dy = yhcal - yhcal_expect;
-	    double dx = xhcal - xhcal_expect;
-	    
-	    double W2recon = (Ptarg + q).M2();
-	    
-	    //cut on neutron spot
-	    if(pow(dy - ny_mean,2)/ny_sigma*ny_sigma + pow(dx - nx_mean,2)/nx_sigma*nx_sigma < nsigma*nsigma && ntrack == 1 && ps_e > 0.15 && W2recon < 2.0){
-	      
-	      if(IHWP == 1) helicity *= -1;
-	      else if(IHWP == -1) helicity *= 1;
-	      else continue;
-	      
-
-	      if(helicity == 1){
-		Yp_n++;
-		ncut_n++;
-	      }
-	      if(helicity == -1){
-		Ym_n++;
-		ncut_n++;
-	      }
-	    }
-	    if(pow(dy - py_mean,2)/py_sigma*py_sigma + pow(dx - px_mean,2)/px_sigma*px_sigma < nsigma*nsigma && ntrack == 1 && ps_e > 0.15 && W2recon < 2.0){
-	      
-	      if(IHWP == 1) helicity *= -1;
-	      else if(IHWP == -1) helicity *= 1;
-	      else continue;
-	    
-
-	      if(helicity == 1){
-		Yp_p++;
-		ncut_p++;
-	      }
-	      if(helicity == -1){
-		Ym_p++;
-		ncut_p++;
-	      }
-	    }
+      if(nCut){
+	if(helicity == 1){
+	    Yp_n++;
+	    ncut_n++;
 	  }
-	}
-	
-	Yp_n_total += Yp_n;
-	Ym_n_total += Ym_n;
-	ncut_n_total += ncut_n;
-	
-	Yp_p_total += Yp_p;
-	Ym_p_total += Ym_p;
-	ncut_p_total += ncut_p;
-
-	double Asym_n = (Yp_n - Ym_n)*1.0/(Yp_n + Ym_n);
-	double Error_n = sqrt((1 - Asym_n*Asym_n)/ncut_n);
-
-	double Asym_p = (Yp_p - Ym_p)*1.0/(Yp_p + Ym_p);
-	double Error_p = sqrt((1 - Asym_p*Asym_p)/ncut_p);
-
-	runs.push_back(run.Atof());
-	A_n.push_back(Asym_n*100);
-	A_n_err.push_back(Error_n*100);
-
-	A_p.push_back(Asym_p*100);
-	A_p_err.push_back(Error_p*100);
-
-	elist->Delete(); 
-	
+	  if(helicity == -1){
+	    Ym_n++;
+	    ncut_n++;
+	  }
       }
+      if(pCut){
+	if(helicity == 1){
+	    Yp_p++;
+	    ncut_p++;
+	  }
+	  if(helicity == -1){
+	    Ym_p++;
+	    ncut_p++;
+	  }
+      }
+
+    }
+
+    if(nevent == 1) currentrunnum = runnum;
+
+    if(runnum != currentrunnum){
+      
+      Yp_n_total += Yp_n;
+      Ym_n_total += Ym_n;
+      ncut_n_total += ncut_n;
+      
+      Yp_p_total += Yp_p;
+      Ym_p_total += Ym_p;
+      ncut_p_total += ncut_p;
+      
+      double Asym_n = (Yp_n - Ym_n)*1.0/(Yp_n + Ym_n);
+      double Error_n = sqrt((1 - Asym_n*Asym_n)/ncut_n);
+      
+      double Asym_p = (Yp_p - Ym_p)*1.0/(Yp_p + Ym_p);
+      double Error_p = sqrt((1 - Asym_p*Asym_p)/ncut_p);
+      
+      runs.push_back(currentrunnum);
+      A_n.push_back(Asym_n*100);
+      A_n_err.push_back(Error_n*100);
+      
+      A_p.push_back(Asym_p*100);
+      A_p_err.push_back(Error_p*100);
+      
+      Yp_n = 0;
+      Ym_n = 0;
+      Yp_p = 0;
+      Ym_p = 0;
+      ncut_n = 0;
+      ncut_p = 0;
+      
+      currentrunnum = runnum;
     }
   }
-  
-
 
   TGraphErrors *g_A_n = new TGraphErrors(runs.size(),&runs[0],&A_n[0],0,&A_n_err[0]);
   TGraphErrors *g_A_p = new TGraphErrors(runs.size(),&runs[0],&A_p[0],0,&A_p_err[0]);
@@ -234,10 +160,10 @@ void Asymmetry_yield(TString cfg){
   g_A_p->SetMarkerStyle(8);
   g_A_p->SetMarkerColor(kRed);
 
-  g_A_n->GetYaxis()->SetRangeUser(-7,7);
+  g_A_n->GetYaxis()->SetRangeUser(-15,15);
 
   
-  TLegend *legend = new TLegend(0.6,0.7,0.89,0.89);
+  TLegend *legend = new TLegend(0.6,0.79,0.89,0.89);
   legend->AddEntry(g_A_n,"(e,e'n) events","p");
   legend->AddEntry(g_A_p,"(e,e'p) events","p");
   legend->SetLineColor(0);
@@ -250,8 +176,6 @@ void Asymmetry_yield(TString cfg){
   double Err_n = sqrt((1 - A_n_total*A_n_total)/ncut_n_total);
   double Err_p = sqrt((1 - A_p_total*A_p_total)/ncut_p_total);
 
-  cout<<"\n\n"<<"Total Events Analyzed "<<nevents_total<<"\n\n";
-
   cout<<"Total Neutron Events "<<ncut_n_total<<endl;
   cout<<"Y+ "<<Yp_n_total<<endl;
   cout<<"Y- "<<Ym_n_total<<endl;
@@ -262,6 +186,7 @@ void Asymmetry_yield(TString cfg){
   cout<<"Y- "<<Ym_p_total<<endl;
   cout<<"A = "<<A_p_total*100<<"% +/- "<<Err_p*100<<"%"<<endl;
 
-  c->Print("../plots/GEN2_Asym.png");
+  c->Print(Form("../plots/GEN%i_Asym.png",conf));
 
-} 
+
+}

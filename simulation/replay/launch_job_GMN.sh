@@ -6,8 +6,8 @@ Jobs=$2
 #declare -a Q2_range=(146 368 677 1018)
 #declare -a Kine_set=("elastic" "inelastic" "beam_bkgd" "wiser_pi0" "wiser_pip" "wiser_pim")
 
-declare -a Q2_range=(136)
-declare -a Kine_set=("elastic" "inelastic" "wiser_pi0" "wiser_pip" "wiser_pim")
+declare -a Q2_range=(133)
+declare -a Kine_set=("beam_bkgd")
 
 
 for Q2 in "${Q2_range[@]}"

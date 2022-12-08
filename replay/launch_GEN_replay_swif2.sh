@@ -3,18 +3,19 @@
 # single-run version for swif2:
 
 runnum=$1
-maxsegments=$2
+firstseg=$2
+maxsegments=$3
 
 segments_per_job=1
 
-if [ $# -eq 3 ];
+if [ $# -eq 4 ];
 then
-    segments_per_job=$3
+    segments_per_job=$4
 fi
 
 echo 'launching swif2 replay jobs for run '$runnum', max segment = '$maxsegments', segments per job = '$segments_per_job
 
-for ((i=0; i<=$maxsegments; i++))
+for ((i=$firstseg; i<=$maxsegments; i++))
 do
     fnameout_pattern='/farm_out/jeffas/gen_replayed_'$runnum'_segment'$i'.out'
     #    sbatch --output=$fnameout_pattern run_GMN_sbatch_nohodo.sh $runnum -1 0 e1209019 $i 1

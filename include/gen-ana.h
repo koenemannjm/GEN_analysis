@@ -8,11 +8,11 @@
 */
 
 #include "Constants.h"                // namespace constant
-//#include "../src/Cut.cpp"             // namespace cut
-//#include "../src/Utilities.cpp"       // namespace util_pd
-//#include "../src/ExpConstants.cpp"    // namespace expconst & class SBSconfig
+#include "../src/Cut.cpp"             // namespace cut
+#include "../src/Utilities.cpp"       // namespace util_pd
+#include "../src/ExpConstants.cpp"    // namespace expconst & class SBSconfig
 #include "../src/SetROOTVar.cpp"      // namespace setrootvar
-//#include "../src/KinematicVar.cpp"    // namespace kine
+#include "../src/KinematicVar.cpp"    // namespace kine
 #include "../src/LoadConfig.cpp"      
 
 /* --- List of gmn-ana libraries --- */

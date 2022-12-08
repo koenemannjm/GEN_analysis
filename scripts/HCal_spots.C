@@ -69,7 +69,7 @@ double bg_fit(double *x, double *par){
 //   }
 // }
 
-void hcal_dxdy_ld2( const char *configfilename,
+void HCal_spots( const char *configfilename,
 		    const char *outputfilename="hcal_dxdy_ld2.root" )
 {
   
