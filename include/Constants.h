@@ -14,6 +14,9 @@ namespace constant {
 
   // muon
   static const double Mmu = 0.1056583745; // +/- 24E-10 GeV
+
+  // pi-
+  static const double Mpim = 0.13957039; // +/- 24E-10 GeV
   
   // proton
   static const double Mp = 0.938272081; // +/- 6E-9 GeV

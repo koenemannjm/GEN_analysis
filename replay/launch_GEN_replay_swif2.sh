@@ -2,9 +2,10 @@
 
 # single-run version for swif2:
 
-runnum=$1
-firstseg=$2
-maxsegments=$3
+kinematic=$1
+runnum=$2
+firstseg=$3
+maxsegments=$4
 
 segments_per_job=1
 
@@ -60,10 +61,10 @@ do
 	if [ $i -gt 0 ]
 	then
 	    echo 'segment '$i' also requires first segment'
-	    swif2 add-job -workflow jeffas_GEN_analysis -partition production -name $jobname -cores 1 -disk 25GB -ram 2000MB -input $cachefile1 $mssfilename1 -input $cachefile2 $mssfilename2 -input $cachefile3 $mssfilename3 -input $cachefirst $mssfirst $script $runnum -1 0 e1209016 $i 1
+	    swif2 add-job -workflow jeffas_${kinematic}_analysis -partition production -name $jobname -cores 1 -disk 25GB -ram 4000MB -input $cachefile1 $mssfilename1 -input $cachefile2 $mssfilename2 -input $cachefile3 $mssfilename3 -input $cachefirst $mssfirst $script $runnum -1 0 e1209016 $i 1
 	else
 	    echo 'segment '$i' IS first segment'
-	    swif2 add-job -workflow jeffas_GEN_analysis -partition production -name $jobname -cores 1 -disk 25GB -ram 2000MB -input $cachefile1 $mssfilename1 -input $cachefile2 $mssfilename2 -input $cachefile3 $mssfilename3 -input $cachefirst $mssfirst $script $runnum -1 0 e1209016 $i 1
+	    swif2 add-job -workflow jeffas_${kinematic}_analysis -partition production -name $jobname -cores 1 -disk 25GB -ram 4000MB -input $cachefile1 $mssfilename1 -input $cachefile2 $mssfilename2 -input $cachefile3 $mssfilename3 -input $cachefirst $mssfirst $script $runnum -1 0 e1209016 $i 1
 	fi
     elif [ -f "$testfilename1" ]; 
     then
@@ -72,10 +73,10 @@ do
 	if [ $i -gt 0 ]
 	then
 	    echo 'segment '$i' also requires first segment'
-	    swif2 add-job -workflow jeffas_GEN_analysis -partition production -name $jobname -cores 1 -disk 25GB -ram 2000MB -input $cachefile1 $mssfilename1 -input $cachefirst $mssfirst $script $runnum -1 0 e1209016 $i 1
+	    swif2 add-job -workflow jeffas_${kinematic}_analysis -partition production -name $jobname -cores 1 -disk 25GB -ram 4000MB -input $cachefile1 $mssfilename1 -input $cachefirst $mssfirst $script $runnum -1 0 e1209016 $i 1
 	else
 	    echo 'segment '$i' IS first segment'
-	    swif2 add-job -workflow jeffas_GEN_analysis -partition production -name $jobname -cores 1 -disk 25GB -ram 2000MB -input $cachefile1 $mssfilename1 -input $cachefirst $mssfirst $script $runnum -1 0 e1209016 $i 1
+	    swif2 add-job -workflow jeffas_${kinematic}_analysis -partition production -name $jobname -cores 1 -disk 25GB -ram 4000MB -input $cachefile1 $mssfilename1 -input $cachefirst $mssfirst $script $runnum -1 0 e1209016 $i 1
 	fi
     fi
 done

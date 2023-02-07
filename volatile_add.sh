@@ -4,7 +4,7 @@ runnum=$1
 first_seg=$2
 last_seg=$3
 
-export DIR=/lustre19/expphy/volatile/halla/sbs/jeffas/GEN_root/Rootfiles
+export DIR=/lustre19/expphy/volatile/halla/sbs/jeffas/GEN_root/Rootfiles/GEM_luminosity
 #export OUT_FILE=gmn_replayed_${runnum}_stream0_seg${first_seg}_${last_seg}.root
 export OUT_FILE=gen_replayed_${runnum}_all.root
 
