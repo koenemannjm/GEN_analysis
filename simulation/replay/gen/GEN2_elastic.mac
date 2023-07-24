@@ -13,14 +13,14 @@
 /g4sbs/targgenDRZ      0 deg             ## target angular misalignment about z axis
 
 ## Configure generator settings
-#/g4sbs/kine            elastic           ## Generator
+/g4sbs/kine            elastic           ## Generator
 /g4sbs/runtime         0.1 s
 /g4sbs/beamcur         60.0 muA
 /g4sbs/rasterR         1.0 mm
 /g4sbs/beamspotsize    0.5 mm
 /g4sbs/beamoffsetx     0.0 mm
 /g4sbs/beamoffsety     0.0 mm
-/g4sbs/beamE           4.2 GeV
+/g4sbs/beamE           4.291 GeV
 /g4sbs/thmin           19.0 deg
 /g4sbs/thmax           39.0 deg
 /g4sbs/phmin          -30.0 deg

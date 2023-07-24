@@ -1,5 +1,17 @@
-#include "../include/gen-ana.h"
-#include "../dflay/src/JSONManager.cxx"
+//////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////
+//   Created by Sean Jeffas, sj9ry@virginia.edu
+//   Last Modified July 7, 2023
+//
+//
+//   The purpose of this script is to check the asymmetry 
+//   using pion events. It will plot the asymmetry as a number
+//   of events.
+//
+//////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////
+#include "../../include/gen-ana.h"
+#include "../../dflay/src/JSONManager.cxx"
 
 void online_asym(const char *configfilename){
 

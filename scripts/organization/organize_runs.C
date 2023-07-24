@@ -1,5 +1,5 @@
-#include "../include/gen-ana.h"
-#include "../dflay/src/JSONManager.cxx"
+#include "../../include/gen-ana.h"
+#include "../../dflay/src/JSONManager.cxx"
 
 void organize_runs(const char *configfilename){
 

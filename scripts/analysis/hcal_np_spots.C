@@ -1,5 +1,17 @@
-#include "../include/gen-ana.h"
-#include "../dflay/src/JSONManager.cxx"
+//////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////
+//   Created by Sean Jeffas, sj9ry@virginia.edu
+//   Last Modified July 7, 2023
+//
+//
+//   The purpose of this script is to check the elastic event
+//   selection. It will plot the HCal data and W2 distributions
+//   for H2 and He3 data for the kinematic point in question.
+//
+//////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////
+#include "../../include/gen-ana.h"
+#include "../../dflay/src/JSONManager.cxx"
 
 double bg_low;
 double bg_high;
@@ -173,11 +185,11 @@ void hcal_np_spots(TString cfg = "GEN2"){
   kinematic = cfg;
 
   //Read the He3 run and H2 run files
-  TFile *H2_file = new TFile("outfiles/QE_test_" + cfg + "_sbs100p_nucleon_p_model2_data.root","read");
-  TFile *He3_file = new TFile("outfiles/QE_test_" + cfg + "_sbs100p_nucleon_np_model2_data.root","read");
+  TFile *H2_file = new TFile("../outfiles/QE_data_" + cfg + "_sbs100p_nucleon_p_model1.root","read");
+  TFile *He3_file = new TFile("../outfiles/QE_data_" + cfg + "_sbs100p_nucleon_np_model2.root","read");
   
   // reading input config file ---------------------------------------
-  JSONManager *jmgr = new JSONManager("../config/" + cfg + "_H2.cfg");
+  JSONManager *jmgr = new JSONManager("../../config/" + cfg + "_H2.cfg");
 
   // elastic cut limits
   W2min = jmgr->GetValueFromKey<double>("W2min");
@@ -249,31 +261,24 @@ void hcal_np_spots(TString cfg = "GEN2"){
   TF1 *fit_dx_H2;
   TF1 *fit_dy_H2;
   TCanvas *c1 = new TCanvas("c1","",800,1000);  
+  //Analyze the spot size for H2 data and return the fit results
   get_np_spots(c1, "H2", hdxdy_coin_H2,cfg,&fit_dx_H2,&fit_dy_H2);
 
   TF1 *fit_dx_He3;
   TF1 *fit_dy_He3;
   TCanvas *c2 = new TCanvas("c2","",800,1000);  
+  //Analyze the spot size for He3 data and return the fit results
   get_np_spots(c2, "He3", hdxdy_coin_He3,cfg,&fit_dx_He3,&fit_dy_He3);
   
   TCanvas *c3 = new TCanvas("c3","",1000,800);  
   hdx_coin_He3->Draw();
   hdx_coin_He3->SetTitle("HCal He3 Data;#Deltax;Entries");
   fit_dx_He3->Draw("same");
-  //hdx_coinhodo_He3->Draw("same hist");
-
-  /*
-  TLegend *legend = new TLegend(0.5,0.75,0.89,0.89);
-  legend->AddEntry("hdx_Wcut_He3","Good Tracks","l");
-  legend->AddEntry("hdx_coin_He3","Good Tracks & Coincidence","l");
-  legend->SetLineColor(0);
-   legend->Draw("same");
-  */
 
   TCanvas *c4 = new TCanvas("c4","",1000,800);  
   hdy_coin_He3->Draw();
   hdy_coin_He3->SetTitle("HCal He3 Data;#Deltay;Entries");
-  //fit_dx_He3->Draw("same");
+  //fit_dy_He3->Draw("same");
 
   TCanvas *c5 = new TCanvas("c5","",1000,800);  
   hdx_coin_H2->Draw();

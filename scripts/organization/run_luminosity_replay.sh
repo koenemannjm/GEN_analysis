@@ -6,7 +6,7 @@ last_event=$3
 
 
 
-cd ../replay
+cd ../../replay
 
 launch_GEN_replay_sbatch_test.sh $runnum $first_event $last_event
 #echo "launch_GEN_replay_sbatch_test.sh "$runnum" "$first_event" "$last_event

@@ -1,5 +1,18 @@
-#include "../include/gen-ana.h"
-#include "../dflay/src/JSONManager.cxx"
+//////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////
+//   Created by Sean Jeffas, sj9ry@virginia.edu
+//   Last Modified July 7, 2023
+//
+//
+//   The purpose of this script is to calculate the coincidence
+//   time between the BB and SBS arms. It will then print out
+//   timing cuts that should be used for coincidence.
+//
+//////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////
+
+#include "../../include/gen-ana.h"
+//#include "../dflay/src/JSONManager.cxx"
 
 
 TF1 *neutron_yield(TH1D *hdx, TString config){
@@ -108,7 +121,12 @@ void do_fit_pol4(TCanvas *c, TH1D *h1,double bg_low, double bg_high, double sign
 
   total_func->Draw("same");
 
-  cout<<par[1]<<" +/- "<<par[2]<<endl;
+  //cout<<par[1]<<" +/- "<<par[2]<<endl;
+
+  TPaveText *pt = new TPaveText(.11,.6,.45,.73,"ndc");
+  pt->AddText(Form("Coin Time = %g +/- %g ns",par[1],par[2]));
+  pt->SetFillColor(0);
+  pt->Draw("same");
 
 }
 
@@ -140,8 +158,9 @@ void do_fit_pol1(TCanvas *c, TH1D *h1,double bg_low, double bg_high, double sign
 
 void coinc_analysis(TString cfg = "GEN2"){
 
-  TFile *H2_file = new TFile("outfiles/QE_test_" + cfg + "_sbs100p_nucleon_p_model2_data.root","read");
-  TFile *He3_file = new TFile("outfiles/QE_test_" + cfg + "_sbs100p_nucleon_np_model2_data.root","read");
+  // Get analyzed data for H2 and He3
+  TFile *H2_file = new TFile("../outfiles/QE_data_" + cfg + "_sbs100p_nucleon_p_model1.root","read");
+  TFile *He3_file = new TFile("../outfiles/QE_data_" + cfg + "_sbs100p_nucleon_np_model2.root","read");
 
   TTree *T = (TTree*)H2_file->Get("Tout");
 
@@ -166,14 +185,15 @@ void coinc_analysis(TString cfg = "GEN2"){
   
   TH1D *h_coinc_H2_trig = new TH1D("h_coinc_H2_trig","",150,400,650);
   TH1D *h_coinc_H2_cal = new TH1D("h_coinc_H2_cal","",150,-100,150);
-  TH1D *h_coinc_H2_hodo = new TH1D("h_coinc_H2_hodo","",150,-100,150);
+  TH1D *h_coinc_H2_hodo = new TH1D("h_coinc_H2_hodo","H2 Coincidence Time;Hodo TDC Time - HCal TDC Time (ns); Entries",150,-100,100);
 
   int nevent = 0;
 
+  //Loop over all events on the H2 file
   while(T->GetEntry(nevent++)){
     double Wrecon = sqrt(max(0., W2));
 
-    if(WCut){
+    if(WCut){ // Fill the histograms with the different times
       h_coinc_H2_trig->Fill(coin_time);
       h_coinc_H2_cal->Fill(bbcal_time - hcal_time);
       h_coinc_H2_hodo->Fill(hodo_time[0] - hcal_time);
@@ -184,7 +204,7 @@ void coinc_analysis(TString cfg = "GEN2"){
   
   T->Delete();
 
-  T = (TTree*)He3_file->Get("Tout");
+  T = (TTree*)He3_file->Get("Tout"); //Switch to He3 file now
 
   T->SetBranchStatus("*",0);
 
@@ -203,61 +223,45 @@ void coinc_analysis(TString cfg = "GEN2"){
   setrootvar::setbranch(T,"hodo_time","",&hodo_time);
   setrootvar::setbranch(T,"helicity","",&helicity);
   setrootvar::setbranch(T,"IHWP","",&IHWP);
-  
-  TH1D *h_coinc_He3_trig = new TH1D("h_coinc_He3_trig","",150,-50,150);
-  TH1D *h_coinc_He3_cal = new TH1D("h_coinc_He3_cal","",150,-100,100);
-  TH1D *h_coinc_He3_hodo = new TH1D("h_coinc_He3_hodo","",150,-100,100);
+ 
+
+  TH1D *h_coinc_He3_cal = new TH1D("h_coinc_He3_cal","He3 Coincidence Time;BBCal ADC Time - HCal TDC Time (ns); Entries",150,-100,100);
+  TH1D *h_coinc_He3_hodo = new TH1D("h_coinc_He3_hodo","He3 Coincidence Time;Hodo TDC Time - HCal TDC Time (ns); Entries",150,-100,100);
 
   TH1D *hdx_He3_nocut = new TH1D("hdx_He3_nocut","",150,-6,4);
   TH1D *hdx_He3_trig = new TH1D("hdx_He3_trig","",150,-6,4);
   TH1D *hdx_He3_hodo = new TH1D("hdx_He3_hodo","",150,-6,4);
-  TH1D *hdx_He3_Wtest = new TH1D("hdx_He3_Wtest","",150,-6,4);
 
   nevent = 0;
 
   while(T->GetEntry(nevent++)){
-    double Wrecon = sqrt(max(0., W2));
     
     double coin_hodo = hodo_time[0] - hcal_time;
 
-   if(WCut){
-
-      h_coinc_He3_trig->Fill(bbcal_time - hcal_time);
+    if(WCut){
       h_coinc_He3_cal->Fill(bbcal_time - hcal_time);
       h_coinc_He3_hodo->Fill(hodo_time[0] - hcal_time);
+
+      hdx_He3_nocut->Fill(dx);      
+      //These cuts should get automated instead of hard coded
+      if(coin_time > 488 && coin_time < 514) 
+	hdx_He3_trig->Fill(dx);
+      if(coin_hodo > 3.5 && coin_hodo < 16.3) 
+	hdx_He3_hodo->Fill(dx);  
     }
-
-   //if(Wrecon > 0.74 && Wrecon < 1.14) {
-   if(WCut) {
-     hdx_He3_nocut->Fill(dx);
-     if(coin_time > 488 && coin_time < 514) 
-       hdx_He3_trig->Fill(dx);
-     if(coin_hodo > 3.5 && coin_hodo < 16.3) 
-       hdx_He3_hodo->Fill(dx);  
-   }
-
-   if(Wrecon > 0.8 && Wrecon < 1.1) 
-     if(coin_hodo > 1 && coin_hodo < 17) 
-       hdx_He3_Wtest->Fill(dx);  
 
   }
 
-
-  TCanvas *c = new TCanvas("c","",800,600);
-  h_coinc_He3_trig->Draw();
-  h_coinc_He3_trig->SetTitle("He3 Coincidence Time;HCal trigger - BBCal trigger (ns); Entries");
-  do_fit_pol4(c,h_coinc_He3_trig,-40,140,30,45);
-
   TCanvas *c1 = new TCanvas("c1","",800,600);
-  h_coinc_He3_cal->Draw();
-  do_fit_pol4(c1,h_coinc_He3_cal,-200,200,25,55);
+  h_coinc_H2_hodo->Draw();
+  do_fit_pol4(c1,h_coinc_H2_hodo,-200,200,-5,15); //Fit H2 data
 
   TCanvas *c2 = new TCanvas("c2","",800,600);
   h_coinc_He3_hodo->Draw();
-  h_coinc_He3_hodo->SetTitle("He3 Coincidence Time;Hodo Cluster Time - HCal Cluster Time (ns); Entries"); 
-  do_fit_pol4(c2,h_coinc_He3_hodo,-200,200,-5,20);
+  do_fit_pol4(c2,h_coinc_He3_hodo,-200,200,-5,20); //Fit He3 data
 
   
+  // plot the dx distributions to see how the coincidence cuts affects them
   TCanvas *c3 = new TCanvas("c3","",800,600);
   hdx_He3_hodo->SetLineColor(kRed);
   hdx_He3_trig->SetLineColor(kGreen);

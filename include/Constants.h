@@ -30,6 +30,10 @@ namespace constant {
   static const double N_A = 6.02214076E23; // 1/mol
   static const double H2_Amass = 1.00784; // u
   static const double D2_Amass = 2.013553212745; // u
+  static const double He3_Amass = 3.01603; // u
+
+  // Ideal Gas
+  static const double R_ideal = 0.08314;  //Divided by 100 because we are using cm instead of m
 
 }
 
