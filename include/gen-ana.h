@@ -13,6 +13,8 @@
 #include "../src/ExpConstants.cpp"    // namespace expconst & class SBSconfig
 #include "../src/SetROOTVar.cpp"      // namespace setrootvar
 #include "../src/KinematicVar.cpp"    // namespace kine
+#include "../src/DBparse.cpp"         // namespace DBparse
+#include "../src/Analysis.cpp"         // namespace Analysis
 
 
 /* --- List of gmn-ana libraries --- */

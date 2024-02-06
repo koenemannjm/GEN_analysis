@@ -20,7 +20,7 @@ namespace expconst {
       return 4.291;
     else if(config=="GEN3")
       return 6.373;
-    else if(config=="GEN4")
+    else if(config=="GEN4" || config=="GEN4b")
       return 8.448;
     else{
       std::cerr << "Enter a valid SBS configuration!" << std::endl;
@@ -47,7 +47,7 @@ namespace expconst {
       return 29.5;
     else if(config=="GEN3")
       return 36.5;
-    else if(config=="GEN4")
+    else if(config=="GEN4" || config=="GEN4b")
       return 35.0;
     else{
       std::cerr << "Enter a valid SBS configuration!" << std::endl;
@@ -70,7 +70,7 @@ namespace expconst {
       return 1.97473;
     else if(config=="GMN9")
       return 1.550;
-    else if(config=="GEN2" || config=="GEN3" || config=="GEN4")
+    else if(config=="GEN2" || config=="GEN3" || config=="GEN4" || config=="GEN4b")
       return 1.63;
     else{
       std::cerr << "Enter a valid SBS configuration!" << std::endl;
@@ -97,7 +97,7 @@ namespace expconst {
       return 34.7;
     else if(config=="GEN3")
       return 22.1;
-    else if(config=="GEN4")
+    else if(config=="GEN4" || config=="GEN4b")
       return 18.0;
     else{
       std::cerr << "Enter a valid SBS configuration!" << std::endl;
@@ -109,7 +109,7 @@ namespace expconst {
     if(config=="GMN1"||config=="GMN4"||config=="GMN7"||config=="GMN11"
        ||config=="GMN14"||config=="GMN8"||config=="GMN9")
       return 2.25;
-    else if(config=="GEN2" || config == 3)
+    else if(config=="GEN2" || config == "GEN3" || config=="GEN4" || config=="GEN4b")
       return 2.8;
     else{
       std::cerr << "Enter a valid SBS configuration!" << std::endl;
@@ -126,7 +126,7 @@ namespace expconst {
       return 14.0;
     else if(config=="GMN11")
       return 14.5;
-    else if(config=="GEN2" || config=="GEN3" || config=="GEN4")
+    else if(config=="GEN2" || config=="GEN3" || config=="GEN4" || config=="GEN4b")
       return 17.0;
     else{
       std::cerr << "Enter a valid SBS configuration!" << std::endl;
@@ -153,7 +153,7 @@ namespace expconst {
       return 34.7;
     else if(config=="GEN3")
       return 21.6; 
-    else if(config=="GEN4")
+    else if(config=="GEN4" || config=="GEN4b")
       return 18.0; 
     else{
       std::cerr << "Enter a valid SBS configuration!" << std::endl;

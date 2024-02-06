@@ -32,28 +32,46 @@ void get_np_spots(TCanvas *c, TString cfg, TH2D *hdxdy,TString config, TF1 **fit
 
   //First project to x
   TH1D *hdx = hdxdy->ProjectionY();
+  double x_cut = -1.0;
 
   //These parameters are determined by looking at the peaks on the plots by eye
   if(config == "GEN2"){
-    p_low = -4.0;
-    p_high = -1.8;
+    p_low = -3.5;
+    p_high = -2.2;
     
-    n_low = -0.6;
-    n_high = 0.8;
+    n_low = -0.8;
+    n_high = 0.5;
     
     bg_low = -4.0;
     bg_high = 3.0;
+
+    x_cut = -1.5;
   }
 
   if(config == "GEN3"){
     p_low = -2.0;
     p_high = -0.8;
     
-    n_low = -0.5;
-    n_high = 0.5;
+    n_low = -0.4;
+    n_high = 0.4;
     
     bg_low = -4.0;
     bg_high = 3.0;
+
+    x_cut = -1;
+  }
+
+  if(config == "GEN4" || config == "GEN4b"){
+    p_low = -1.4;
+    p_high = -0.9;
+    
+    n_low = -0.3;
+    n_high = 0.1;
+    
+    bg_low = -4.0;
+    bg_high = 1.5;
+
+    x_cut = -0.4;
   }
 
   //total function = proton gaus + neutron gaus + 4th order bkgd
@@ -61,7 +79,7 @@ void get_np_spots(TCanvas *c, TString cfg, TH2D *hdxdy,TString config, TF1 **fit
   TF1 *p_xfunc = new TF1("p_xfunc","gaus",p_low,p_high);
   TF1 *n_xfunc = new TF1("n_xfunc","gaus",n_low,n_high);  
   TF1 *bg_xfunc = new TF1("bg_xfunc","pol4",bg_low,bg_high);
-  TF1 *total_xfunc = new TF1("total_xfunc","gaus(0) + gaus(3) + pol4(6)",-4,3);
+  TF1 *total_xfunc = new TF1("total_xfunc","gaus(0) + gaus(3) + pol4(6)",-4,2);
   
   //Do fit but do not plot the results
   hdx->Fit(p_xfunc,"qNR");  
@@ -75,6 +93,10 @@ void get_np_spots(TCanvas *c, TString cfg, TH2D *hdxdy,TString config, TF1 **fit
 
   //Set the parameters in the total function using the results above
   total_xfunc->SetParameters(par);
+  if(config == "GEN4") {
+    total_xfunc->SetParLimits(4,-0.2,-0.1);
+    total_xfunc->SetParLimits(5,0.2,0.6);
+  }
   hdx->Fit(total_xfunc,"qR+"); 
   
   //Get the fit results
@@ -93,12 +115,11 @@ void get_np_spots(TCanvas *c, TString cfg, TH2D *hdxdy,TString config, TF1 **fit
   n_xfunc->SetParameters(&par[3]);
   
   //Cut between p/n spot for the y-direction fitting
-  double x_cut = -1.0;
   int x_cut_bin = hdxdy->GetYaxis()->FindBin(x_cut);
 
   TH1D *hdy_p = hdxdy->ProjectionX("dy_p",0,x_cut_bin);
   TH1D *hdy_n = hdxdy->ProjectionX("dy_n",x_cut_bin,-1);
-  
+
   //This direction is just a gaus fit
   TF1 *p_yfunc = new TF1("p_yfunc","gaus",-1,1);
   TF1 *bg_yfunc = new TF1("bg_yfunc","pol4",-1.5,1.5);
@@ -180,20 +201,24 @@ void get_np_spots(TCanvas *c, TString cfg, TH2D *hdxdy,TString config, TF1 **fit
 
 
 
-void hcal_np_spots(TString cfg = "GEN2"){
+void hcal_np_spots(TString cfg = "GEN2", TString type = "data"){
 
   kinematic = cfg;
 
   //Read the He3 run and H2 run files
-  TFile *H2_file = new TFile("../outfiles/QE_data_" + cfg + "_sbs100p_nucleon_p_model1.root","read");
-  TFile *He3_file = new TFile("../outfiles/QE_data_" + cfg + "_sbs100p_nucleon_np_model2.root","read");
+  TFile *H2_file = new TFile("../outfiles/QE_" + type + "_" + cfg + "_sbs100p_nucleon_p_model1.root","read");
+  TFile *He3_file = new TFile("../outfiles/QE_" + type + "_" + cfg + "_sbs100p_nucleon_np_model2.root","read");
   
   // reading input config file ---------------------------------------
-  JSONManager *jmgr = new JSONManager("../../config/" + cfg + "_H2.cfg");
+  //TString jmgr_file = "../../config/" + cfg + "_H2.cfg";  
+  TString jmgr_file = "../../config/" + cfg + "_He3.cfg";  
+  if(cfg == "GEN2") jmgr_file = "../../config/" + cfg + "_H2_SBS100.cfg";  
+  if(type == "sim") jmgr_file = "../../config/" + cfg + "_H2_" + type + ".cfg";
+  JSONManager *jmgr = new JSONManager(jmgr_file);
 
   // elastic cut limits
-  W2min = jmgr->GetValueFromKey<double>("W2min");
-  W2max = jmgr->GetValueFromKey<double>("W2max");
+  W2min = 0.48;
+  W2max = 1.28;
 
 
    ////////////////////// ~~~~~~~~First analyze the H2 file~~~~~~~~  //////////////////////
@@ -205,15 +230,15 @@ void hcal_np_spots(TString cfg = "GEN2"){
   TH2D *hdxdy_coin_H2 = new TH2D("hdxdy_coin_H2","",150,-2,2,150,-6,6);
   TH1D *hW2_all_H2 = new TH1D("hW2_all_H2","",200,0,4);
   TH1D *hW2_cut_H2 = new TH1D("hW2_cut_H2","",200,0,4);
-
+  
   //Fill histograms directly from the tree using Draw funcitons
   T->Draw("W2>>hW2_cut_H2","pCut");
   T->Draw("W2>>hW2_all_H2");
   T->Draw("dx:dy>>hdxdy_nocut_H2");
-  T->Draw("dx:dy>>hdxdy_W2cut_H2","WCut");
-  //T->Draw("dx:dy>>hdxdy_coin_H2","coinCut && WCut");
-  T->Draw("dx:dy>>hdxdy_coin_H2",Form("coinCut &&  W2 > %g && W2 < %g",W2min,W2max));
-
+  T->Draw("dx:dy>>hdxdy_W2cut_H2",Form("W2 > %g && W2 < %g",W2min,W2max));
+  if(type == "sim") T->Draw("dx:dy>>hdxdy_coin_H2",Form("W2 > %g && W2 < %g",W2min,W2max));
+  else T->Draw("dx:dy>>hdxdy_coin_H2",Form("coinCut &&  W2 > %g && W2 < %g",W2min,W2max));
+  
 
    ////////////////////// ~~~~~~~~Delete tree and now switch to He3 file~~~~~~~~  //////////////////////
   T->Delete();
@@ -224,17 +249,15 @@ void hcal_np_spots(TString cfg = "GEN2"){
   TH2D *hdxdy_nocut_He3 = new TH2D("hdxdy_nocut_He3","",150,-2,2,150,-6,6);
   TH2D *hdxdy_Wcut_He3 = new TH2D("hdxdy_Wcut_He3","",150,-2,2,150,-6,6);
   TH2D *hdxdy_coin_He3 = new TH2D("hdxdy_coin_He3","",150,-2,2,150,-6,6);
-  TH2D *hdxdy_coinhodo_He3 = new TH2D("hdxdy_coinhodo_He3","",150,-2,2,150,-6,6);
   TH1D *hW2_all_He3 = new TH1D("hW2_all_He3","",200,0,4);
   TH1D *hW2_cut_He3 = new TH1D("hW2_cut_He3","",200,0,4);
 
+  
   //Fill histograms same as above for H2
   T->Draw("W2>>hW2_cut_He3","(pCut || nCut) && coinCut");
   T->Draw("W2>>hW2_all_He3");
   T->Draw("dx:dy>>hdxdy_nocut_He3");
-  T->Draw("dx:dy>>hdxdy_Wcut_He3","WCut");
-  //T->Draw("dx:dy>>hdxdy_coin_He3","coinCut && WCut");
-  T->Draw("dx:dy>>hdxdy_coinhodo_He3","WCut && (hodo_time[0] - hcal_time) > 4 && (hodo_time[0] - hcal_time) < 17");
+  T->Draw("dx:dy>>hdxdy_Wcut_He3",Form("W2 > %g && W2 < %g",W2min,W2max));
   T->Draw("dx:dy>>hdxdy_coin_He3",Form("coinCut && W2 > %g && W2 < %g",W2min,W2max));
   
   
@@ -273,6 +296,8 @@ void hcal_np_spots(TString cfg = "GEN2"){
   TCanvas *c3 = new TCanvas("c3","",1000,800);  
   hdx_coin_He3->Draw();
   hdx_coin_He3->SetTitle("HCal He3 Data;#Deltax;Entries");
+  //hdx_Wcut_He3->Draw();
+  //hdx_Wcut_He3->SetTitle("HCal He3 Data;#Deltax;Entries");
   fit_dx_He3->Draw("same");
 
   TCanvas *c4 = new TCanvas("c4","",1000,800);  

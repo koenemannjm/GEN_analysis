@@ -40,15 +40,51 @@ int QuasiElastic_sim_ana(const char *configfilename, std::string filebase="../ou
   // parsing trees
   std::string rootfile_dir = jmgr->GetValueFromKey_str("rootfile_dir");
   TChain *C = new TChain("T");
-  C->Add(rootfile_dir.c_str());
+  TString rootfiles = rootfile_dir + "replayed*He3*";
+  C->Add(rootfiles);
   if (C->GetEntries()==0) {std::cerr << "*!* No ROOT file!" << std::endl; throw;}
-
+  
   // seting up the desired SBS configuration
   TString conf = jmgr->GetValueFromKey_str("GEN_config");
+  TString SIMC_type = jmgr->GetValueFromKey_str("SIMC_type");
   int sbsmag = jmgr->GetValueFromKey<int>("SBS_magnet_percent");
   SBSconfig sbsconf(conf, sbsmag);
   sbsconf.Print();
+ 
   
+  vector<int> Ntried;
+  vector<double> luminosity, genvol;
+  /*
+  TString file = rootfile_dir + "simcout/"+conf+"_He3_"+SIMC_type+"_elastic_summary.csv";
+  fstream file_csv; file_csv.open(file);
+  //Check if file exists
+  if (!file_csv.is_open()) {
+    cout<<"!!!!WARNING, ERROR: File "<<file<<" is not found"<<endl;
+    exit(0);
+  }
+  else {
+    cout<<"DB file found: "<<file<<endl;
+  }
+  
+  string line;
+  int iline=0;
+  while (getline(file_csv, line)) {
+      // Create a stringstream to parse the line
+    stringstream ss(line);
+    string cell;
+    iline++;   // Keep track of the number of lines
+    if(iline == 1) continue; // Skip first line
+    int irow = 0;
+    // Split the line into cells using a comma as a delimiter
+    while (getline(ss, cell, ',')) {
+      irow++;
+      if(irow == 3) Ntried.push_back(stoi(cell));
+      if(irow == 4) genvol.push_back(stod(cell));
+      if(irow == 5) luminosity.push_back(stod(cell));
+    }
+  }
+  */
+ 
   double bbtheta = sbsconf.GetBBtheta_rad();
 
   TVector3 BB_zaxis( sin(bbtheta), 0.0, cos(bbtheta) );
@@ -107,14 +143,15 @@ int QuasiElastic_sim_ana(const char *configfilename, std::string filebase="../ou
   double ntrack, p[maxNtr],px[maxNtr],py[maxNtr],pz[maxNtr],xTr[maxNtr],yTr[maxNtr],thTr[maxNtr],phTr[maxNtr];
   double vx[maxNtr],vy[maxNtr],vz[maxNtr];
   double xtgt[maxNtr],ytgt[maxNtr],thtgt[maxNtr],phtgt[maxNtr];
-  std::vector<std::string> trvar = {"n","p","px","py","pz","x","y","th","ph","vx","vy","vz","tg_x","tg_y","tg_th","tg_ph"};
-  std::vector<void*> trvar_mem = {&ntrack,&p,&px,&py,&pz,&xTr,&yTr,&thTr,&phTr,&vx,&vy,&vz,&xtgt,&ytgt,&thtgt,&phtgt};
+  double xfp[maxNtr],yfp[maxNtr],thfp[maxNtr],phfp[maxNtr];
+  std::vector<std::string> trvar = {"n","p","px","py","pz","vx","vy","vz","tg_x","tg_y","tg_th","tg_ph","r_x","r_y","r_th","r_ph"};
+  std::vector<void*> trvar_mem = {&ntrack,&p,&px,&py,&pz,&vx,&vy,&vz,&xtgt,&ytgt,&thtgt,&phtgt,&xfp,&yfp,&thfp,&phfp};
   setrootvar::setbranch(C,"bb.tr",trvar,trvar_mem);
 
   //MC variables
-  double mc_sigma, mc_omega, mc_fnucl;
-  std::vector<std::string> mc = {"mc_sigma","mc_omega","mc_fnucl"};
-  std::vector<void*> mc_mem = {&mc_sigma,&mc_omega,&mc_fnucl};
+  double mc_sigma, mc_omega, mc_fnucl, mc_simc_weight;
+  std::vector<std::string> mc = {"mc_sigma","mc_omega","mc_fnucl","simc_Weight"};
+  std::vector<void*> mc_mem = {&mc_sigma,&mc_omega,&mc_fnucl,&mc_simc_weight};
   setrootvar::setbranch(C,"MC",mc,mc_mem);
 
   double mc_vx[maxNtr], mc_vy[maxNtr], mc_px[maxNtr], mc_py[maxNtr], mc_pz[maxNtr];
@@ -157,6 +194,7 @@ int QuasiElastic_sim_ana(const char *configfilename, std::string filebase="../ou
   bool pCut;            Tout->Branch("pCut", &pCut, "pCut/B");
   bool nCut;            Tout->Branch("nCut", &nCut, "nCut/B");
   double weight;        Tout->Branch("weight", &weight, "weight/D");
+  double T_fnucl;         Tout->Branch("fnucl", &T_fnucl, "fnucl/D");
   bool fiduCut;         Tout->Branch("fiduCut", &fiduCut, "fiduCut/B");
   bool coinCut;         Tout->Branch("coinCut", &coinCut, "coinCut/B");
   //
@@ -177,8 +215,10 @@ int QuasiElastic_sim_ana(const char *configfilename, std::string filebase="../ou
   double T_ytgt;        Tout->Branch("ytgt", &T_ytgt, "ytgt/D");
   double T_thtgt;       Tout->Branch("thtgt", &T_thtgt, "thtgt/D");
   double T_phtgt;       Tout->Branch("phtgt", &T_phtgt, "phtgt/D");
-  double T_thtgt_true;  Tout->Branch("thtgt_true", &T_thtgt_true, "thtgt_true/D");
-  double T_phtgt_true;  Tout->Branch("phtgt_true", &T_phtgt_true, "phtgt_true/D");
+  double T_xfp;         Tout->Branch("xfp", &T_xfp, "xfp/D");
+  double T_yfp;         Tout->Branch("yfp", &T_yfp, "yfp/D");
+  double T_thfp;        Tout->Branch("thfp", &T_thfp, "thfp/D");
+  double T_phfp;        Tout->Branch("phfp", &T_phfp, "phfp/D");  
   double T_trP;         Tout->Branch("trP", &T_trP, "trP/D");
   double T_trX;         Tout->Branch("trX", &T_trX, "trX/D");
   double T_trY;         Tout->Branch("trY", &T_trY, "trY/D");
@@ -226,6 +266,7 @@ int QuasiElastic_sim_ana(const char *configfilename, std::string filebase="../ou
   std::cout << std::endl;
   long nevent = 0, nevents = C->GetEntries(); 
   int treenum = 0, currenttreenum = 0;
+  int run_inc = -1;
 
   cout<<"Processing "<<nevents<<" events"<<endl;
   
@@ -241,9 +282,10 @@ int QuasiElastic_sim_ana(const char *configfilename, std::string filebase="../ou
       treenum = currenttreenum;
       GlobalCut->UpdateFormulaLeaves();
       string s = C->GetFile()->GetName();
-      int start = s.find("_stream0");
-      start -= 4;
-      int end = start + 4;
+      int start = s.find("job_");
+      start += 4;
+      int end = s.find(".root");
+      run_inc = stoi(s.substr(start,end - start));
     } 
     
     bool passedgCut = GlobalCut->EvalInstance(0) != 0;   
@@ -252,7 +294,8 @@ int QuasiElastic_sim_ana(const char *configfilename, std::string filebase="../ou
      
     //MC event weighting
     weight = mc_sigma*mc_omega*lumi / ngen_total;
-
+    //weight = mc_simc_weight * luminosity[run_inc] * genvol[run_inc] * (1.0 / Ntried[run_inc]);
+    
     // kinematic parameters
     double ebeam = sbsconf.GetEbeam();       // Expected beam energy (GeV) [Get it from EPICS, eventually]
     double ebeam_corr = ebeam; //- MeanEloss;
@@ -298,6 +341,12 @@ int QuasiElastic_sim_ana(const char *configfilename, std::string filebase="../ou
       pNhat = kine::qVect_unit(thetaN_expect, phiN_expect);
       Q2recon = kine::Q2(Pe.E(), Peprime.E(), etheta);
       W2recon = kine::W2(Pe.E(), Peprime.E(), Q2recon, Ntype);
+      /*
+      cout<<nevent<<" "<<mc_px[0]<<" "<<px[0]<<endl;
+      cout<<nevent<<" "<<mc_py[0]<<" "<<py[0]<<endl;
+      cout<<nevent<<" "<<mc_pz[0]<<" "<<pz[0]<<endl;
+      */
+      
     } else if (model == 2) {
       TLorentzVector q = Pe - Peprime; // 4-momentum of virtual photon
       nu = q.E();
@@ -312,7 +361,7 @@ int QuasiElastic_sim_ana(const char *configfilename, std::string filebase="../ou
     TVector3 pvect_true(mc_px[0],mc_py[0],mc_pz[0]);
     TVector3 pvect_BB( pvect_true.Dot(BB_xaxis), pvect_true.Dot(BB_yaxis), pvect_true.Dot(BB_zaxis) );
     
-
+    
     T_ebeam = Pe.E();
 
     T_nu = nu;
@@ -322,6 +371,7 @@ int QuasiElastic_sim_ana(const char *configfilename, std::string filebase="../ou
     T_ephi = ephi;
     T_etheta = etheta;
     T_pcentral = pcentral;
+    T_fnucl = mc_fnucl;
 
     T_vz = vz[0];
     T_vx = mc_vx[0];
@@ -330,8 +380,10 @@ int QuasiElastic_sim_ana(const char *configfilename, std::string filebase="../ou
     T_ytgt = ytgt[0];
     T_thtgt = thtgt[0];
     T_phtgt = phtgt[0];
-    T_thtgt_true = pvect_BB.X()/pvect_BB.Z();
-    T_phtgt_true = pvect_BB.Y()/pvect_BB.Z();
+    T_xfp = xfp[0];
+    T_yfp = yfp[0];
+    T_thfp = thfp[0];
+    T_phfp = phfp[0];
     T_trP = p[0];
     T_trX = xTr[0];
     T_trY = yTr[0];

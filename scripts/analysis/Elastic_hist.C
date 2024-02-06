@@ -1,3 +1,4 @@
+
 //////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////
 //   Created by Sean Jeffas, sj9ry@virginia.edu
@@ -13,99 +14,34 @@
 #include "../../include/gen-ana.h"
 #include "../../dflay/src/JSONManager.cxx"
 
-double bg_low;
-double bg_high;
-
-double p_low;
-double p_high;
-
-double n_low;
-double n_high;
-
-double W2min = 0;
-double W2max = 1.6;
 
 
-
-void get_n_yield(TH2D *hdxdy,TString config, TF1 **fit_bg,TF1 **fit_n){
-
-  //First project to x
-  TH1D *hdx = hdxdy->ProjectionY();
-
-  //These parameters are determined by looking at the peaks on the plots by eye
-  if(config == "GEN2"){
-    p_low = -4.0;
-    p_high = -1.8;
-    
-    n_low = -0.6;
-    n_high = 0.8;
-    
-    bg_low = -4.0;
-    bg_high = 3.0;
-  }
-
-  if(config == "GEN3"){
-    p_low = -2.0;
-    p_high = -0.8;
-    
-    n_low = -0.5;
-    n_high = 0.5;
-    
-    bg_low = -5.0;
-    bg_high = 3.0;
-  }
-
-  //total function = proton gaus + neutron gaus + 4th order bkgd
-  double par[11];
-  TF1 *p_xfunc = new TF1("p_xfunc","gaus",p_low,p_high);
-  TF1 *n_xfunc = new TF1("n_xfunc","gaus",n_low,n_high);  
-  TF1 *bg_xfunc = new TF1("bg_xfunc","pol4",bg_low,bg_high);
-  TF1 *total_xfunc = new TF1("total_xfunc","gaus(0) + gaus(3) + pol4(6)",-5,3);
-  
-  //Do fit but do not plot the results
-  hdx->Fit(p_xfunc,"qNR");  
-  hdx->Fit(n_xfunc,"qNR+");  
-  hdx->Fit(bg_xfunc,"qNR+"); 
-
-  //Put the fit parameters into the array
-  p_xfunc->GetParameters(&par[0]);
-  n_xfunc->GetParameters(&par[3]);
-  bg_xfunc->GetParameters(&par[6]);
-
-  //Set the parameters in the total function using the results above
-  total_xfunc->SetParameters(par);
-  hdx->Fit(total_xfunc,"qNR+"); 
-  
-  //Get the fit results
-  total_xfunc->GetParameters(&par[0]);
-
-  //For plotting purposes set the p/n function parameters from the total fit
-  p_xfunc = new TF1("p_xfunc","gaus",-4,4);
-  p_xfunc->SetParameters(&par[0]);
-
-  n_xfunc = new TF1("n_xfunc","gaus",-4,4);
-  n_xfunc->SetParameters(&par[3]);
-
-  bg_xfunc = new TF1("bg_xfunc","pol4",-5,3);
-  bg_xfunc->SetParameters(&par[6]);
-
-  //Save the fit result for use later
-  *fit_bg = bg_xfunc;
-  *fit_n = n_xfunc;
-  //*fit_n = total_xfunc;
- 
-}
-
-void Elastic_hist(TString cfg = "GEN2", TString type = "data"){
+void Elastic_hist(TString input = "GEN2", TString type = "data"){
 
   gStyle->SetOptStat(0);
   gStyle->SetOptFit(1);
 
-  //Read the He3 run and H2 run files
-  TFile *H2_file = new TFile("../outfiles/QE_"+ type + "_" + cfg + "_sbs100p_nucleon_p_model1.root","read");
-  TFile *He3_file = new TFile("../outfiles/QE_" + type + "_" + cfg + "_sbs100p_nucleon_np_model2.root","read");
+  TString cfg = input;
+  if(input == "GEN4all") cfg = "GEN4";
 
-  TString jmgr_file = "../../config/" + cfg + "_H2.cfg";
+  TString cfg_H2 = cfg;
+  if(cfg == "GEN4") cfg_H2 = "GEN4b";  //Needed because there is no GEN4a H2 data
+
+  //Read the He3 run and H2 run files
+  TChain *T_H2 = new TChain("Tout");
+  TChain *T_He3 = new TChain("Tout");
+  T_H2->Add("../outfiles/QE_" + type + "_" + cfg_H2 + "_sbs100p_nucleon_p_model1.root");
+  if(input == "GEN4all"){
+    T_He3->Add("../outfiles/QE_" + type + "_GEN4_sbs100p_nucleon_np_model2.root");
+    T_He3->Add("../outfiles/QE_" + type + "_GEN4b_sbs100p_nucleon_np_model2.root");
+  }
+  else {
+    T_He3->Add("../outfiles/QE_" + type + "_" + cfg + "_sbs100p_nucleon_np_model2.root");
+  }
+
+
+  TString jmgr_file = "../../config/" + cfg_H2 + "_H2.cfg";
+  if(cfg == "GEN2") jmgr_file = "../../config/" + cfg + "_H2_SBS100.cfg";
   if(type == "sim") jmgr_file = "../../config/" + cfg + "_H2_" + type + ".cfg";
   
   JSONManager *jmgr_H2 = new JSONManager(jmgr_file);
@@ -127,48 +63,50 @@ void Elastic_hist(TString cfg = "GEN2", TString type = "data"){
   double Nsigma_cut_dx_n_He3 = jmgr_He3->GetValueFromKey<double>("Nsigma_cut_dx_n");
   double Nsigma_cut_dy_n_He3 = jmgr_He3->GetValueFromKey<double>("Nsigma_cut_dy_n");
   
+  // elastic cut limits
+  double W2min = jmgr_He3->GetValueFromKey<double>("W2min");
+  double W2max = jmgr_He3->GetValueFromKey<double>("W2max");
 
 
    ////////////////////// ~~~~~~~~First analyze the H2 file~~~~~~~~  //////////////////////
-  TTree *T = (TTree*)H2_file->Get("Tout");
 
   //Set the histograms that will be filled
-  TH1D *hW2_all_H2 = new TH1D("hW2_all_H2","",200,-0.5,3);
-  TH1D *hW2_cut_H2 = new TH1D("hW2_cut_H2","",200,-0.5,3);
+  TH1F *hW2_all_H2 = new TH1F("hW2_all_H2","",200,-0.5,3);
+  TH1F *hW2_cut_H2 = new TH1F("hW2_cut_H2","",200,-0.5,3);
   TH2D *hdxdy_nocut_H2 = new TH2D("hdxdy_nocut_H2","",150,-2,2,150,-6,6);
   TH2D *hdxdy_W2cut_H2 = new TH2D("hdxdy_W2cut_H2","",150,-2,2,150,-6,6);
   TH2D *hdxdy_coin_H2 = new TH2D("hdxdy_coin_H2","",150,-2,2,150,-6,6);
   
   TCut run_cut = ""; 
-  if(cfg == "GEN2") run_cut = "runnum > 2007"; 
+  //if(cfg == "GEN2") run_cut = "runnum > 2007"; 
 
   //Fill histograms directly from the tree using Draw funcitons
-  T->Draw("W2>>hW2_cut_H2","pCut" && run_cut);
-  T->Draw("W2>>hW2_all_H2",run_cut);
-  T->Draw("dx:dy>>hdxdy_nocut_H2",run_cut);
-  T->Draw("dx:dy>>hdxdy_W2cut_H2",Form("W2 > %g && W2 < %g",W2min,W2max) && run_cut);
-  T->Draw("dx:dy>>hdxdy_coin_H2",Form("coinCut &&  W2 > %g && W2 < %g",W2min,W2max) && run_cut);
+  T_H2->Draw("W2>>hW2_cut_H2","pCut" && run_cut);
+  T_H2->Draw("W2>>hW2_all_H2",run_cut);
+  T_H2->Draw("dx:dy>>hdxdy_nocut_H2",run_cut);
+  T_H2->Draw("dx:dy>>hdxdy_W2cut_H2",Form("W2 > %g && W2 < %g",W2min,W2max) && run_cut);
+  if(type == "sim")  T_H2->Draw("dx:dy>>hdxdy_coin_H2",Form("W2 > %g && W2 < %g",W2min,W2max) && run_cut);
+  else  T_H2->Draw("dx:dy>>hdxdy_coin_H2",Form("coinCut &&  W2 > %g && W2 < %g",W2min,W2max) && run_cut);
 
 
-  ////////////////////// ~~~~~~~~Delete tree and now switch to He3 file~~~~~~~~  //////////////////////
-  T->Delete();
-
-  T = (TTree*)He3_file->Get("Tout");
+  ////////////////////// ~~~~~~~~Now switch to He3 file~~~~~~~~  //////////////////////
   
   //Set histograms to be filled
-  TH1D *hW2_all_He3 = new TH1D("hW2_all_He3","",200,-0.5,3);
-  TH1D *hW2_cut_He3 = new TH1D("hW2_cut_He3","",200,-0.5,3);
+  TH1F *hW2_all_He3 = new TH1F("hW2_all_He3","",200,-0.5,3);
+  TH1F *hW2_cut_He3 = new TH1F("hW2_cut_He3","",200,-0.5,3);
   TH2D *hdxdy_nocut_He3 = new TH2D("hdxdy_nocut_He3","",150,-2,2,150,-6,6);
   TH2D *hdxdy_Wcut_He3 = new TH2D("hdxdy_Wcut_He3","",150,-2,2,150,-6,6);
   TH2D *hdxdy_coin_He3 = new TH2D("hdxdy_coin_He3","",150,-2,2,150,-6,6);
   
 
   //Fill histograms same as above for H2
-  T->Draw("W2>>hW2_cut_He3","(pCut || nCut) && coinCut");
-  T->Draw("W2>>hW2_all_He3");
-  T->Draw("dx:dy>>hdxdy_nocut_He3");
-  T->Draw("dx:dy>>hdxdy_Wcut_He3",Form("W2 > %g && W2 < %g",W2min,W2max));
-  T->Draw("dx:dy>>hdxdy_coin_He3",Form("coinCut && W2 > %g && W2 < %g",W2min,W2max));
+  if(type == "sim") T_He3->Draw("W2>>hW2_cut_He3","(pCut || nCut)");
+  else T_He3->Draw("W2>>hW2_cut_He3","(pCut || nCut) && coinCut");
+  T_He3->Draw("W2>>hW2_all_He3");
+  T_He3->Draw("dx:dy>>hdxdy_nocut_He3");
+  T_He3->Draw("dx:dy>>hdxdy_Wcut_He3",Form("W2 > %g && W2 < %g",W2min,W2max));
+  if(type == "sim") T_He3->Draw("dx:dy>>hdxdy_coin_He3",Form("W2 > %g && W2 < %g",W2min,W2max));
+  else T_He3->Draw("dx:dy>>hdxdy_coin_He3",Form("coinCut && W2 > %g && W2 < %g",W2min,W2max));
   
   
   
@@ -176,16 +114,16 @@ void Elastic_hist(TString cfg = "GEN2", TString type = "data"){
   ////////////////////// ~~~~~~~Plot the results~~~~~~~~  //////////////////////
 
   //Get some histograms that are projections of other histograms
-  TH1D *hdx_H2 = hdxdy_coin_H2->ProjectionY("");
+  TH1F *hdx_H2 = (TH1F*)hdxdy_coin_H2->ProjectionY("");
   hdx_H2->Scale(1/hdx_H2->GetEntries());
   
-  TH1D *hdx_He3 = hdxdy_coin_He3->ProjectionY("hdx_He3");
+  TH1F *hdx_He3 = (TH1F*)hdxdy_coin_He3->ProjectionY("hdx_He3");
   hdx_He3->SetLineColor(kRed);
   hdx_He3->Scale(1/hdx_He3->GetEntries());
 
-  TH1D *hdx_nocut_He3 = hdxdy_nocut_He3->ProjectionY("hdx_nocut_He3");
-  TH1D *hdx_Wcut_He3 = hdxdy_Wcut_He3->ProjectionY("hdx_Wcut_He3");
-  TH1D *hdx_coin_He3 = hdxdy_coin_He3->ProjectionY("hdx_coin_He3");
+  TH1F *hdx_nocut_He3 = (TH1F*)hdxdy_nocut_He3->ProjectionY("hdx_nocut_He3");
+  TH1F *hdx_Wcut_He3 = (TH1F*)hdxdy_Wcut_He3->ProjectionY("hdx_Wcut_He3");
+  TH1F *hdx_coin_He3 = (TH1F*)hdxdy_coin_He3->ProjectionY("hdx_coin_He3");
 
   
   //Draw H2 HCal 2D plot
@@ -211,18 +149,19 @@ void Elastic_hist(TString cfg = "GEN2", TString type = "data"){
 
 
 
-  TF1 *fit_He3;
+  TF1 *fit_n;
+  TF1 *fit_p;
   TF1 *fit_bg;
-  get_n_yield(hdxdy_coin_He3,cfg,&fit_bg,&fit_He3);
-  //get_n_yield(hdxdy_Wcut_He3,cfg,&fit_bg,&fit_He3);
+  TF1 *fit_total;
+  Analysis::He3_fit(hdx_coin_He3,cfg,&fit_bg,&fit_n,&fit_p,&fit_total);
+  
 
-  int n_yield = abs(fit_He3->Integral(-4,4)/hdx_He3->GetBinWidth(0));
+  int n_yield = abs(fit_n->Integral(-4,4)/hdx_He3->GetBinWidth(0));
   cout<<"neutron yield: "<<n_yield<<endl;
 
 
   //Draw He3 HCal 2D plot
   TCanvas *c2 = new TCanvas("c2","",800,1000);  
-  //get_np_spots(c2, "He3", hdxdy_coin_He3,cfg,&fit_He3);
   hdxdy_coin_He3->Draw("colz");
   hdxdy_coin_He3->SetTitle("^{3}He HCal Elastics;#Deltay (m);#Deltax (m)");
 
@@ -246,8 +185,8 @@ void Elastic_hist(TString cfg = "GEN2", TString type = "data"){
   p_spot_He3->SetLineColor(kRed);
   n_spot_He3->SetLineColor(kRed);
   
-  p_spot_He3->Draw("same");
-  n_spot_He3->Draw("same");
+  //p_spot_He3->Draw("same");
+  //n_spot_He3->Draw("same");
 
 
   //Draw W2 plot for He3
@@ -256,9 +195,11 @@ void Elastic_hist(TString cfg = "GEN2", TString type = "data"){
   //hdx_coin_He3->SetLineColor(kRed);
   hdx_coin_He3->Draw();
   hdx_coin_He3->SetTitle("HCal ^{3}He Data;#Deltax;Entries");
-  fit_He3->Draw("same");
+  fit_n->Draw("same");
+  fit_p->Draw("same");
   fit_bg->SetLineStyle(2);
   fit_bg->Draw("same");
+  fit_total->Draw("same");
   //hdx_coinhodo_He3->Draw("same hist");
 
   TLegend *legend = new TLegend(0.43,0.75,0.89,0.89);
@@ -329,7 +270,7 @@ void Elastic_hist(TString cfg = "GEN2", TString type = "data"){
   pt3->SetFillColor(0);
   pt3->Draw("same");
 
-  TString outputfile = "../../plots/" + cfg + "_" + type + "_elastics.pdf";
+  TString outputfile = "../../plots/" + input + "_" + type + "_elastics.pdf";
   
   c1->Print(outputfile + "(");
   c2->Print(outputfile);

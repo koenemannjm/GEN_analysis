@@ -71,6 +71,11 @@ int QuasiElastic_ana(const char *configfilename, std::string filebase="../outfil
   std::string gcut = jmgr->GetValueFromKey_str("global_cut");
   TCut globalcut = gcut.c_str();
   TTreeFormula *GlobalCut = new TTreeFormula("GlobalCut", globalcut, C);
+  
+  double GEMpitch = 10.0*TMath::DegToRad();
+  TVector3 GEMzaxis(-sin(GEMpitch),0,cos(GEMpitch));
+  TVector3 GEMyaxis(0,1,0);
+  TVector3 GEMxaxis = (GEMyaxis.Cross(GEMzaxis)).Unit();
 
   // setting up ROOT tree branch addresses ---------------------------------------
   int maxNtr=1000;
@@ -92,19 +97,21 @@ int QuasiElastic_ana(const char *configfilename, std::string filebase="../outfil
   std::vector<void*> bbcalpsclvar_mem = {&ePS,&xPS}; 
   setrootvar::setbranch(C,"bb.ps",bbcalpsclvar,bbcalpsclvar_mem);
   
+  int maxhcal = 100;
+
   // hcal clus var
-  double eHCAL, xHCAL, yHCAL, rblkHCAL, cblkHCAL, idblkHCAL,tdctimeHCAL;
-  std::vector<std::string> hcalclvar = {"e","x","y","rowblk","colblk","idblk","tdctimeblk"};
-  std::vector<void*> hcalclvar_mem = {&eHCAL,&xHCAL,&yHCAL,&rblkHCAL,&cblkHCAL,&idblkHCAL,&tdctimeHCAL};
+  double eHCAL[maxhcal], xHCAL[maxhcal], yHCAL[maxhcal], rblkHCAL[maxhcal], cblkHCAL[maxhcal], idblkHCAL[maxhcal],tdctimeHCAL[maxhcal],atimeHCAL[maxhcal];
+  std::vector<std::string> hcalclvar = {"e","x","y","rowblk","colblk","idblk","tdctimeblk","atimeblk"};
+  std::vector<void*> hcalclvar_mem = {&eHCAL,&xHCAL,&yHCAL,&rblkHCAL,&cblkHCAL,&idblkHCAL,&tdctimeHCAL,&atimeHCAL};
   setrootvar::setbranch(C, "sbs.hcal", hcalclvar, hcalclvar_mem);
   
 
   // grinch var
   const int maxHit = 1000;
-  double grinch_time[maxHit],grinch_x[maxHit],grinch_y[maxHit];
+  double grinch_x[maxHit],grinch_y[maxHit];
   int ngrinch_hits;
-  std::vector<std::string> grinchvar = {"time","xhit","yhit"};
-  std::vector<void*> grinchvar_mem = {&grinch_time,&grinch_x,&grinch_y};
+  std::vector<std::string> grinchvar = {"xhit","yhit"};
+  std::vector<void*> grinchvar_mem = {&grinch_x,&grinch_y};
   setrootvar::setbranch(C, "bb.grinch_tdc.hit", grinchvar, grinchvar_mem);
   setrootvar::setbranch(C,"Ndata.bb.grinch_tdc.hit","time",&ngrinch_hits);  
   
@@ -156,6 +163,12 @@ int QuasiElastic_ana(const char *configfilename, std::string filebase="../outfil
   std::vector<std::string> Rastervar = {"x","y"};
   std::vector<void*> Rastervar_mem = {&rawcurx,&rawcury};
   setrootvar::setbranch(C,"Lrb.Raster.rawcur",Rastervar,Rastervar_mem);
+
+  //Raster 2
+  double rawcur2x, rawcur2y;
+  std::vector<std::string> Raster2var = {"x","y"};
+  std::vector<void*> Raster2var_mem = {&rawcur2x,&rawcur2y};
+  setrootvar::setbranch(C,"Lrb.Raster2.rawcur",Raster2var,Raster2var_mem);
 
   // turning on the remaining branches we use for the globalcut
   C->SetBranchStatus("bb.gem.track.nhits", 1);
@@ -212,6 +225,7 @@ int QuasiElastic_ana(const char *configfilename, std::string filebase="../outfil
   double T_ytgt;        Tout->Branch("ytgt", &T_ytgt, "ytgt/D");
   double T_thtgt;       Tout->Branch("thtgt", &T_thtgt, "thtgt/D");
   double T_phtgt;       Tout->Branch("phtgt", &T_phtgt, "phtgt/D");
+  double T_thetabend;   Tout->Branch("thetabend", &T_thetabend, "thetabend/D");
   double T_xfp;         Tout->Branch("xfp", &T_xfp, "xfp/D");
   double T_yfp;         Tout->Branch("yfp", &T_yfp, "yfp/D");
   double T_thfp;        Tout->Branch("thfp", &T_thfp, "thfp/D");
@@ -241,18 +255,19 @@ int QuasiElastic_ana(const char *configfilename, std::string filebase="../outfil
   double T_grinch_y[maxHit];    Tout->Branch("yGRINCH", &T_grinch_y, "yGRINCH[ngrinch_hits]/D");
   
   //Timing Information
-  double T_coinT_trig;           Tout->Branch("coinT_trig", &T_coinT_trig, "coinT_trig/D");
+  double T_coin_time;           Tout->Branch("coin_time", &T_coin_time, "coin_time/D");
   double T_hcal_time;            Tout->Branch("hcal_time", &T_hcal_time, "hcal_time/D"); 
   double T_bbcal_time;           Tout->Branch("bbcal_time", &T_bbcal_time, "bbcal_time/D");
-  double T_grinch_time[maxHit];  Tout->Branch("grinch_time", &T_grinch_time, "grinch_time[ngrinch_hits]/D");
   int T_nhodo_clus;              Tout->Branch("nhodo_clus", &T_nhodo_clus, "nhodo_clus/I");  
   double T_hodo_time[maxClus];   Tout->Branch("hodo_time", &T_hodo_time, "hodo_time[nhodo_clus]/D");
 
   //BPM and Raster information
   double T_BPMAx;     Tout->Branch("BPMAx", &T_BPMAx, "BPMAx/D");
   double T_BPMAy;     Tout->Branch("BPMAy", &T_BPMAy, "BPMAy/D");
-  double T_rawcurx;  Tout->Branch("Rasterx", &T_rawcurx, "Raster_curx/D");
-  double T_rawcury;  Tout->Branch("Rastery", &T_rawcury, "Raster_cury/D");
+  double T_rawcurx;  Tout->Branch("Rasterx", &T_rawcurx, "Rasterx/D");
+  double T_rawcury;  Tout->Branch("Rastery", &T_rawcury, "Rastery/D");
+  double T_rawcur2x;  Tout->Branch("Raster2x", &T_rawcur2x, "Raster2x/D");
+  double T_rawcur2y;  Tout->Branch("Raster2y", &T_rawcur2y, "Raster2y/D");
 
   //Helicity information
   int T_helicity;         Tout->Branch("helicity", &T_helicity, "helicity/I");
@@ -294,7 +309,7 @@ int QuasiElastic_ana(const char *configfilename, std::string filebase="../outfil
   cout<<"Processing "<<nevents<<" events"<<endl;
   
   while (C->GetEntry(nevent++)) {
-    
+
     // print progress 
     if( nevent % 1000 == 0 ) std::cout << nevent*100.0/nevents << "% \r";
     std::cout.flush();
@@ -316,7 +331,7 @@ int QuasiElastic_ana(const char *configfilename, std::string filebase="../outfil
     if (!passedgCut) continue;
     
     // coin time cut (N/A for simulation)  !! Not a reliable cut - loosing a lot of elastics
- 
+
     double bbcal_trig_time=0., hcal_trig_time=0.;
     for(int ihit=0; ihit<tdcElemN; ihit++){
       if(tdcElem[ihit]==5) bbcal_trig_time=tdcTrig[ihit];
@@ -327,7 +342,7 @@ int QuasiElastic_ana(const char *configfilename, std::string filebase="../outfil
     
     //Timing Information
     
-    T_hcal_time = tdctimeHCAL;
+    T_hcal_time = atimeHCAL[0];
     T_bbcal_time = atimeSH;
    
       
@@ -335,8 +350,8 @@ int QuasiElastic_ana(const char *configfilename, std::string filebase="../outfil
     for(int iclus = 0; iclus < nhodo_clus; iclus++)
       T_hodo_time[iclus] = hodo_time[iclus];
       
-    double coin_time = hodo_time[0] - tdctimeHCAL;  
-    T_coinT_trig = coin_time; 
+    double coin_time = atimeHCAL[0] - atimeSH;  
+    T_coin_time = coin_time; 
     h_coin_time->Fill(coin_time);
       
     coinCut = coin_time > coin_time_cut[0] - Nsigma_coin_time*coin_time_cut[1] && coin_time < coin_time_cut[0] + Nsigma_coin_time*coin_time_cut[1];
@@ -344,7 +359,6 @@ int QuasiElastic_ana(const char *configfilename, std::string filebase="../outfil
     //Grinch time and position
     T_ngrinch_hits = ngrinch_hits;
     for(int ihit = 0; ihit < ngrinch_hits; ihit++){
-      T_grinch_time[ihit] = grinch_time[ihit];
       T_grinch_x[ihit] = grinch_x[ihit];
       T_grinch_y[ihit] = grinch_y[ihit];
     }
@@ -359,6 +373,8 @@ int QuasiElastic_ana(const char *configfilename, std::string filebase="../outfil
     T_BPMAy = BPMAy;
     T_rawcurx = rawcurx;
     T_rawcury = rawcury;
+    T_rawcur2x = rawcur2x;
+    T_rawcur2y = rawcur2y;
     
     // kinematic parameters
     double ebeam = sbsconf.GetEbeam();       // Expected beam energy (GeV) [Get it from EPICS, eventually]
@@ -417,6 +433,17 @@ int QuasiElastic_ana(const char *configfilename, std::string filebase="../outfil
     double dpel = Peprime.E()/pcentral - 1.0; 
     h_dpel->Fill(dpel);
 
+    
+    TVector3 enhat_tgt( thtgt[0], phtgt[0], 1.0 );
+    enhat_tgt = enhat_tgt.Unit();
+	
+    TVector3 enhat_fp( thfp[0], phfp[0], 1.0 );
+    enhat_fp = enhat_fp.Unit();
+	
+    TVector3 enhat_fp_rot = enhat_fp.X() * GEMxaxis + enhat_fp.Y() * GEMyaxis + enhat_fp.Z() * GEMzaxis;
+
+    double thetabend = acos( enhat_fp_rot.Dot( enhat_tgt ) );
+    
     T_ebeam = Pe.E();
 
     T_nu = nu;
@@ -434,6 +461,7 @@ int QuasiElastic_ana(const char *configfilename, std::string filebase="../outfil
     T_ytgt = ytgt[0];
     T_thtgt = thtgt[0];
     T_phtgt = phtgt[0];
+    T_thetabend = thetabend;
     T_xfp = xfp[0];
     T_yfp = yfp[0];
     T_thfp = thfp[0];
@@ -450,15 +478,15 @@ int QuasiElastic_ana(const char *configfilename, std::string filebase="../outfil
     T_xSH = xSH;
     T_ySH = ySH;
 
-    T_eHCAL = eHCAL;
-    T_xHCAL = xHCAL;
-    T_yHCAL = yHCAL;
+    T_eHCAL = eHCAL[0];
+    T_xHCAL = xHCAL[0];
+    T_yHCAL = yHCAL[0];
 
     // Expected position of the q vector at HCAL
     vector<double> xyHCAL_exp; // xyHCAL_exp[0] = xHCAL_exp & xyHCAL_exp[1] = yHCAL_exp
     kine::GetxyHCALexpect(vertex, pNhat, HCAL_origin, HCAL_axes, xyHCAL_exp);
-    double dx = xHCAL - xyHCAL_exp[0];  
-    double dy = yHCAL - xyHCAL_exp[1]; 
+    double dx = xHCAL[0] - xyHCAL_exp[0];  
+    double dy = yHCAL[0] - xyHCAL_exp[1]; 
 
     T_xHCAL_exp = xyHCAL_exp[0];
     T_yHCAL_exp = xyHCAL_exp[1];
@@ -466,7 +494,7 @@ int QuasiElastic_ana(const char *configfilename, std::string filebase="../outfil
     T_dy = dy;
 
     // HCAL active area and safety margin cuts [Fiducial region]
-    bool AR_cut = cut::inHCAL_activeA(xHCAL, yHCAL, hcal_active_area);
+    bool AR_cut = cut::inHCAL_activeA(xHCAL[0], yHCAL[0], hcal_active_area);
     bool FR_cut = cut::inHCAL_fiducial(xyHCAL_exp[0], xyHCAL_exp[1], sbs_kick, hcal_safety_margin);
 
     // HCAL cuts
@@ -482,7 +510,7 @@ int QuasiElastic_ana(const char *configfilename, std::string filebase="../outfil
       //if (fiduCut) { //No fiducial cut for GEN?
 	h_dxHCAL->Fill(dx);
 	h_dyHCAL->Fill(dy);
-	h2_rcHCAL->Fill(cblkHCAL, rblkHCAL);
+	h2_rcHCAL->Fill(cblkHCAL[0], rblkHCAL[0]);
 	h2_dxdyHCAL->Fill(dy, dx);
 	
 	if (pCut) h2_xyHCAL_p->Fill(xyHCAL_exp[1], xyHCAL_exp[0] - sbs_kick);

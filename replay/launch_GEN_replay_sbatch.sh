@@ -3,6 +3,7 @@
 runnum=$1
 startsegments=$2
 maxsegments=$3
+sbs_gems=0
 
 
 
@@ -17,9 +18,9 @@ do
     fi
 
    fnameout_pattern='/farm_out/jeffas/gen_replayed_'$runnum'_segment'$i'.out'
-   sbatch --output=$fnameout_pattern run_GEN_sbatch.csh $runnum -1 0 e1209016 $i 1
+   #sbatch --output=$fnameout_pattern run_GEN_sbatch.csh $runnum -1 0 e1209016 $i 1 $sbs_gems
    #sbatch --output=$fnameout_pattern run_GMN_sbatch.csh $runnum 200000 0 e1209016 $i 1
-   #run_GEN_sbatch.csh $runnum 1000 0 e1209016 $i 1
+   run_GEN_sbatch.csh $runnum 1000 0 e1209016 $i 1
    
    
 done

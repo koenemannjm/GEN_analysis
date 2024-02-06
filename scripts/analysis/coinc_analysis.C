@@ -15,90 +15,7 @@
 //#include "../dflay/src/JSONManager.cxx"
 
 
-TF1 *neutron_yield(TH1D *hdx, TString config){
 
-  double p_low = 0;
-  double p_high = 0;
-  double n_low = 0;
-  double n_high = 0;
-  double bg_low = 0;
-  double bg_high = 0;
-  double par[11];
-
-  if(config == "GEN2"){
-    p_low = -4.0;
-    p_high = -1.8;
-    
-    n_low = -0.6;
-    n_high = 0.8;
-    
-    bg_low = -4.0;
-    bg_high = 3.0;
-  }
-
-  if(config == "GEN3"){
-    p_low = -2.0;
-    p_high = -0.8;
-    
-    n_low = -0.4;
-    n_high = 0.4;
-    
-    bg_low = -4.0;
-    bg_high = 3.0;
-
-    par[0] = 600;
-    par[1] = -1.5;
-    par[2] = 0.4;
-
-    par[3] = 150;
-    par[4] = 0;
-    par[5] = 0.4;
-  }
-
-  
-  //TF1 *p_xfunc = new TF1("p_xfunc","gaus",p_low,p_high);
-  TF1 *p_xfunc = new TF1("p_xfunc","gaus",p_low,p_high);
-  TF1 *n_xfunc = new TF1("n_xfunc","gaus",n_low,n_high);  
-  TF1 *bg_xfunc = new TF1("bg_xfunc","pol4",bg_low,bg_high);
-  TF1 *total_xfunc = new TF1("total_xfunc","gaus(0) + gaus(3) + pol4(6)",bg_low,bg_high);
-
-  p_xfunc->SetParameters(&par[0]);
-  n_xfunc->SetParameters(&par[3]);
-  
-
-  hdx->Fit(p_xfunc,"qNR");  
-  hdx->Fit(n_xfunc,"qNR+");  
-  hdx->Fit(bg_xfunc,"qNR+"); 
-
-  p_xfunc->GetParameters(&par[0]);
-  n_xfunc->GetParameters(&par[3]);
-  bg_xfunc->GetParameters(&par[6]);
-
-  total_xfunc->SetParameters(par);
-  hdx->Fit(total_xfunc,"qNR+"); 
-  total_xfunc->GetParameters(&par[0]);
-
-  par[0] = abs(par[0]);
-  par[3] = abs(par[3]);
-
-  p_xfunc = new TF1("p_xfunc","gaus",-4,4);
-  p_xfunc->SetParameters(&par[0]);
-
-  n_xfunc = new TF1("n_xfunc","gaus",-4,4);
-  n_xfunc->SetParameters(&par[3]);
- 
- 
-  return n_xfunc;
-
-}
-
-double Yield(TF1 *fit, TH1D *hdx){
-
-  double binw = hdx->GetBinWidth(0);
-
-  return fit->Integral(-4,4)/binw;
-
-}
 
 void do_fit_pol4(TCanvas *c, TH1D *h1,double bg_low, double bg_high, double signal_low,double signal_high){
 
@@ -158,6 +75,8 @@ void do_fit_pol1(TCanvas *c, TH1D *h1,double bg_low, double bg_high, double sign
 
 void coinc_analysis(TString cfg = "GEN2"){
 
+  gStyle->SetOptStat(0);
+
   // Get analyzed data for H2 and He3
   TFile *H2_file = new TFile("../outfiles/QE_data_" + cfg + "_sbs100p_nucleon_p_model1.root","read");
   TFile *He3_file = new TFile("../outfiles/QE_data_" + cfg + "_sbs100p_nucleon_np_model2.root","read");
@@ -183,9 +102,8 @@ void coinc_analysis(TString cfg = "GEN2"){
   int helicity;   setrootvar::setbranch(T,"helicity","",&helicity);
   int IHWP;   setrootvar::setbranch(T,"IHWP","",&IHWP);
   
-  TH1D *h_coinc_H2_trig = new TH1D("h_coinc_H2_trig","",150,400,650);
-  TH1D *h_coinc_H2_cal = new TH1D("h_coinc_H2_cal","",150,-100,150);
-  TH1D *h_coinc_H2_hodo = new TH1D("h_coinc_H2_hodo","H2 Coincidence Time;Hodo TDC Time - HCal TDC Time (ns); Entries",150,-100,100);
+  TH1D *h_coinc_H2_cal = new TH1D("h_coinc_H2_cal","H2 Coincidence Time;HCal TDC Time (ns) - BBCal ADC Time; Entries",150,-10,200);
+  TH1D *h_coinc_H2_hodo = new TH1D("h_coinc_H2_hodo","H2 Coincidence Time;HCal TDC Time (ns) - Hodo TDC Time; Entries",150,-10,200);
 
   int nevent = 0;
 
@@ -194,9 +112,8 @@ void coinc_analysis(TString cfg = "GEN2"){
     double Wrecon = sqrt(max(0., W2));
 
     if(WCut){ // Fill the histograms with the different times
-      h_coinc_H2_trig->Fill(coin_time);
-      h_coinc_H2_cal->Fill(bbcal_time - hcal_time);
-      h_coinc_H2_hodo->Fill(hodo_time[0] - hcal_time);
+      h_coinc_H2_cal->Fill(hcal_time - bbcal_time);
+      h_coinc_H2_hodo->Fill(hcal_time - hodo_time[0]);
     }
 
   }
@@ -225,63 +142,28 @@ void coinc_analysis(TString cfg = "GEN2"){
   setrootvar::setbranch(T,"IHWP","",&IHWP);
  
 
-  TH1D *h_coinc_He3_cal = new TH1D("h_coinc_He3_cal","He3 Coincidence Time;BBCal ADC Time - HCal TDC Time (ns); Entries",150,-100,100);
-  TH1D *h_coinc_He3_hodo = new TH1D("h_coinc_He3_hodo","He3 Coincidence Time;Hodo TDC Time - HCal TDC Time (ns); Entries",150,-100,100);
-
-  TH1D *hdx_He3_nocut = new TH1D("hdx_He3_nocut","",150,-6,4);
-  TH1D *hdx_He3_trig = new TH1D("hdx_He3_trig","",150,-6,4);
-  TH1D *hdx_He3_hodo = new TH1D("hdx_He3_hodo","",150,-6,4);
+  TH1D *h_coinc_He3_cal = new TH1D("h_coinc_He3_cal","He3 Coincidence Time;HCal ADC Time (ns) - BBCal ADC Time; Entries",150,40,200);
+  TH1D *h_coinc_He3_hodo = new TH1D("h_coinc_He3_hodo","He3 Coincidence Time;HCal TDC Time (ns) - Hodo TDC Time; Entries",150,-100,100);
+  
 
   nevent = 0;
 
   while(T->GetEntry(nevent++)){
-    
-    double coin_hodo = hodo_time[0] - hcal_time;
 
     if(WCut){
-      h_coinc_He3_cal->Fill(bbcal_time - hcal_time);
-      h_coinc_He3_hodo->Fill(hodo_time[0] - hcal_time);
-
-      hdx_He3_nocut->Fill(dx);      
-      //These cuts should get automated instead of hard coded
-      if(coin_time > 488 && coin_time < 514) 
-	hdx_He3_trig->Fill(dx);
-      if(coin_hodo > 3.5 && coin_hodo < 16.3) 
-	hdx_He3_hodo->Fill(dx);  
+      h_coinc_He3_cal->Fill(hcal_time - bbcal_time);
+      h_coinc_He3_hodo->Fill(hcal_time - hodo_time[0]);  
     }
 
   }
 
   TCanvas *c1 = new TCanvas("c1","",800,600);
-  h_coinc_H2_hodo->Draw();
-  do_fit_pol4(c1,h_coinc_H2_hodo,-200,200,-5,15); //Fit H2 data
+  h_coinc_H2_cal->Draw();
+  do_fit_pol4(c1,h_coinc_H2_cal,-10,200,60,100); //Fit H2 data
 
   TCanvas *c2 = new TCanvas("c2","",800,600);
-  h_coinc_He3_hodo->Draw();
-  do_fit_pol4(c2,h_coinc_He3_hodo,-200,200,-5,20); //Fit He3 data
+  h_coinc_He3_cal->Draw();
+  do_fit_pol4(c2,h_coinc_He3_cal,60,200,150,165); //Fit He3 data
 
-  
-  // plot the dx distributions to see how the coincidence cuts affects them
-  TCanvas *c3 = new TCanvas("c3","",800,600);
-  hdx_He3_hodo->SetLineColor(kRed);
-  hdx_He3_trig->SetLineColor(kGreen);
-  hdx_He3_nocut->SetTitle("HCal p/n Spots;#Deltax;Entries");
-  hdx_He3_nocut->Draw();    
-  hdx_He3_hodo->Draw("same");  
-  hdx_He3_trig->Draw("same");
-  //TF1 *fit_trig = neutron_yield(hdx_He3_trig, cfg);  
-  //fit_trig->Draw("same");
-  //cout<<Yield(fit_trig,hdx_He3_trig)<<endl;
-
-  //TF1 *fit_hodo = neutron_yield(hdx_He3_hodo, cfg);  
-  //fit_hodo->Draw("same");
-  //cout<<Yield(fit_hodo,hdx_He3_hodo)<<endl;
-
-  TLegend *legend = new TLegend(0.6,0.7,0.89,0.89);
-  legend->AddEntry("hdx_He3_nocut","No Timing Cuts","l");
-  legend->AddEntry("hdx_He3_trig","HCal/BBCal Trig Diff < 2#sigma","l");
-  legend->AddEntry("hdx_He3_hodo","HCal/Hodo Clus Diff < 2#sigma","l");
-  legend->SetLineColor(0);
-  legend->Draw("same");
 
 }
