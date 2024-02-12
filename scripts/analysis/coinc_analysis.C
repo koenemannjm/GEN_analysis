@@ -12,9 +12,6 @@
 //////////////////////////////////////////////////////////
 
 #include "../../include/gen-ana.h"
-//#include "../dflay/src/JSONManager.cxx"
-
-
 
 
 void do_fit_pol4(TCanvas *c, TH1D *h1,double bg_low, double bg_high, double signal_low,double signal_high){

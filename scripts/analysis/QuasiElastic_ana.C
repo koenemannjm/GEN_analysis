@@ -26,15 +26,17 @@
 #include "../../include/gen-ana.h"
 #include "../../dflay/src/JSONManager.cxx"
 
-int QuasiElastic_ana(const char *configfilename, std::string filebase="../outfiles/QE_data")
+int QuasiElastic_ana(const std::string configfilename, std::string filebase="../outfiles/QE_data")
 {
+
+  string configdir = "../../config/";
   gErrorIgnoreLevel = kError; // Ignores all ROOT warnings
 
   // Define a clock to get macro processing time
   TStopwatch *sw = new TStopwatch(); sw->Start();
 
   // reading input config file ---------------------------------------
-  JSONManager *jmgr = new JSONManager(configfilename);
+  JSONManager *jmgr = new JSONManager(configdir + configfilename);
 
   // parsing trees
   std::string rootfile_dir = jmgr->GetValueFromKey_str("rootfile_dir");

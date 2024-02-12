@@ -24,7 +24,6 @@
 #include "TLorentzVector.h"
 
 #include "../../include/gen-ana.h"
-#include "../../dflay/src/JSONManager.cxx"
 
 
 void Asymmetry_yield(const char *configfilename,std::string filebase="../outfiles/QE_data")

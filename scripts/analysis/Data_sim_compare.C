@@ -11,7 +11,7 @@
 //////////////////////////////////////////////////////////
 
 #include "../../include/gen-ana.h"
-#include "../../dflay/src/JSONManager.cxx"
+
 
 void Data_sim_compare(TString input = "GEN2",TString tgt = "He3"){
 

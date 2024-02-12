@@ -1,7 +1,8 @@
+#include <iostream>
+
 #include "../include/Analysis.h"
 
 namespace Analysis {
-
 
   double fitbg_pol4( double *x, double *par ){
     double dx = x[0];
@@ -45,7 +46,7 @@ namespace Analysis {
 
     double bg = 0.0;
 
-    // 4th order polynomial for the background:
+    // Get the background function:
     if(bg_option == "pol4") bg = fitbg_pol4(x,&par[3]);
     else if(bg_option == "pol3") bg = fitbg_pol3(x,&par[3]);
     else if(bg_option == "gaus") bg = fitbg_gaus(x,&par[3]);
@@ -54,12 +55,13 @@ namespace Analysis {
       cout<<"[Analysis:fitsim] bg fit option is not valid!!!"<<endl;
       exit(0);
     }
+  
 
     double simu = Norm_overall * (hdx_sim_p->Interpolate(dx) + R_pn * hdx_sim_n->Interpolate(dx) + Bg_norm * bg);
 
     return simu;   
   }
-
+  
   void He3_fit(TH1F *hdx,TString config, TF1 **fit_bg,TF1 **fit_n,TF1 **fit_p,TF1 **fit_total){
     double bg_low;
     double bg_high;
@@ -155,7 +157,7 @@ namespace Analysis {
     *fit_total = total_xfunc;
 
   }
-
+  
   void He3_sim_fit(TH1F *hdx_data){
 
     //Get histogram data so all future histograms match
@@ -187,8 +189,8 @@ namespace Analysis {
     FitFunc->SetNpx(1000);
     double startpar[] = {1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0};
     FitFunc->SetParameters(startpar);
-    FitFunc->SetParLimits(0,0,100);
-    FitFunc->SetParLimits(1,0,100);
+    FitFunc->SetParLimits(0,0.1,100);
+    FitFunc->SetParLimits(1,0.1,100);
     FitFunc->SetParLimits(2,0,100);
     
     
@@ -231,6 +233,5 @@ namespace Analysis {
     }
 
   }
-
-  
+ 
 }

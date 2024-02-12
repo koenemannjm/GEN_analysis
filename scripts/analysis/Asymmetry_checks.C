@@ -11,15 +11,29 @@
 //////////////////////////////////////////////////////////
 
 #include "../../include/gen-ana.h"
-#include "../../dflay/src/JSONManager.cxx"
 
-void Data_sim_compare(TString input = "GEN2",TString tgt = "He3"){
+map<int,double> fGoodHel;
+
+void getDB(TString DB_file){
+
+  // Entries should follow this form:
+  //{var name, variable pointer, vairable description, 1/0 (mandatory/not mandatory variable)}
+  DBparse::DBRequest request[] = {
+    {"Good Helicity", &fGoodHel, "Is the helicity readback good (0/1 = no/yes)", 1}
+  };
+  
+  const int nvar = sizeof(request) / sizeof(request[0]);
+  
+  DB_load(DB_file,request,nvar);
+}
+
+void Asymmetry_checks(TString input = "GEN2",TString tgt = "He3"){
 
   gStyle->SetOptStat(0);
   gStyle->SetOptFit(1);
 
-  Analysis::bg_option = "pol4";
-  bool use_dy_cut = false;
+  TString DB_file = "../../DB/Helicity_quality.csv";
+  getDB(DB_file);
 
   TString cfg = input;
   TString cfg_sim = input;
@@ -33,6 +47,17 @@ void Data_sim_compare(TString input = "GEN2",TString tgt = "He3"){
   TString jmgr_file = "../../config/" + cfg + "_" + tgt + ".cfg";
   JSONManager *jmgr = new JSONManager(jmgr_file);
 
+  std::vector<int> runnums; jmgr->GetVectorFromKey<int>("runnums",runnums);
+
+  if(input == "GEN4all"){
+    TString jmgr_file_4b = "../../config/GEN4b_" + tgt + ".cfg";
+    JSONManager *jmgr_4b = new JSONManager(jmgr_file_4b);   
+    std::vector<int> runnums_4b; jmgr_4b->GetVectorFromKey<int>("runnums",runnums_4b);
+
+    runnums.insert( runnums.end(), runnums_4b.begin(), runnums_4b.end() );
+  }
+
+
    // elastic cut limits
   double W2min = jmgr->GetValueFromKey<double>("W2min");
   double W2max = jmgr->GetValueFromKey<double>("W2max");
@@ -44,6 +69,13 @@ void Data_sim_compare(TString input = "GEN2",TString tgt = "He3"){
   //dymin = -1.2;
   //dymax = 1.2;
 
+  vector<double> dx_n; jmgr->GetVectorFromKey<double>("dx_n", dx_n);
+  double Nsigma_cut_dx_n = jmgr->GetValueFromKey<double>("Nsigma_cut_dx_n");
+  double n_dxmin = dx_n[0] - Nsigma_cut_dx_n*dx_n[1];
+  double n_dxmax = dx_n[0] + Nsigma_cut_dx_n*dx_n[1];
+
+  int IHWP_Flip = jmgr->GetValueFromKey<int>("IHWP_Flip");
+
   vector<double> coin_time_cut; jmgr->GetVectorFromKey<double>("coin_time", coin_time_cut);
 
   TString reaction = "np";
@@ -53,142 +85,172 @@ void Data_sim_compare(TString input = "GEN2",TString tgt = "He3"){
 
   //Read the He3 run and H2 data files
   TFile *data_file = new TFile("../outfiles/QE_data_" + cfg + "_sbs100p_nucleon_" + reaction + "_model" + model + ".root","read");
-
-  //Read the He3 run and H2 simulation files
-  TFile *sim_file = new TFile("../outfiles/QE_sim_" + cfg_sim + "_sbs100p_nucleon_" + reaction + "_model" + model + ".root","read");
-
-  //Get the TTrees
-  TTree *T_sim = (TTree*)sim_file->Get("Tout");
   
-  TChain *T_data = new TChain("Tout");
+  TChain *T = new TChain("Tout");
   if(input == "GEN4all"){
-    T_data->Add("../outfiles/QE_data_GEN4_sbs100p_nucleon_np_model2.root");
-    T_data->Add("../outfiles/QE_data_GEN4b_sbs100p_nucleon_np_model2.root");
+    T->Add("../outfiles/QE_data_GEN4_sbs100p_nucleon_np_model2.root");
+    T->Add("../outfiles/QE_data_GEN4b_sbs100p_nucleon_np_model2.root");
   }
   else {
-    T_data->Add("../outfiles/QE_data_" + cfg + "_sbs100p_nucleon_np_model2.root");
+    T->Add("../outfiles/QE_data_" + cfg + "_sbs100p_nucleon_np_model2.root");
   }
 
+  T->SetBranchStatus("*",0);
+
+  // This is the variables we need from the analyzed root file
+  int runnum;   setrootvar::setbranch(T,"runnum","",&runnum);
+  bool WCut;   setrootvar::setbranch(T,"WCut","",&WCut);
+  bool pCut;   setrootvar::setbranch(T,"pCut","",&pCut);
+  bool nCut;   setrootvar::setbranch(T,"nCut","",&nCut);
+  bool coinCut;   setrootvar::setbranch(T,"coinCut","",&coinCut);
+  double W2;   setrootvar::setbranch(T,"W2","",&W2);
+  double dx;   setrootvar::setbranch(T,"dx","",&dx);
+  double dy;   setrootvar::setbranch(T,"dy","",&dy);
+  double coin_time;   setrootvar::setbranch(T,"coin_time","",&coin_time);
+  double hcal_time;   setrootvar::setbranch(T,"hcal_time","",&hcal_time);
+  double hodo_time[1000];   setrootvar::setbranch(T,"hodo_time","",&hodo_time);
+  int helicity;   setrootvar::setbranch(T,"helicity","",&helicity);
+  int IHWP;   setrootvar::setbranch(T,"IHWP","",&IHWP);
+
   /////Set the histograms
-  int nbins = 100;
+  int nbinsdx = 100;
   double xmin = -4;
   double xmax = 2.5;
+  double W2min_r = -1;
+  double W2max_r = 5;
+  double W2bin_size = 0.2;
 
   if(cfg == "GEN2"){
     xmin = -6;
     xmax = 3;
+    W2min_r = -1;
+    W2max_r = 5;
   }
+  else if(cfg == "GEN3"){
+    xmin = -6;
+    xmax = 3;
+    W2min_r = -1;
+    W2max_r = 6;
+  }
+  else if(cfg == "GEN4"){
+    xmin = -6;
+    xmax = 3;
+    W2min_r = -2;
+    W2max_r = 6;
+  }
+
+  const int nbinsW2 = (int)(W2max_r - W2min_r) / W2bin_size;
+  
   
   //dx
-  TH1F *hdx_data = new TH1F("hdx_data","",nbins,xmin,xmax);
-  Analysis::hdx_sim_p = new TH1F("hdx_sim_p","",nbins,xmin,xmax);
-  Analysis::hdx_sim_n = new TH1F("hdx_sim_n","",nbins,xmin,xmax);
-  Analysis::hdx_bg_data = new TH1F("hdx_bg_data","",nbins,xmin,xmax);
+  TH2F *hW2_x = new TH2F("hW2_x","",nbinsW2,W2min_r,W2max_r,nbinsdx,xmin,xmax);
+  
+  double W2_array[nbinsW2];
+  double A_array[nbinsW2];
+  double A_err_array[nbinsW2];
+  int Yp_array[nbinsW2];
+  int Ym_array[nbinsW2];
 
-  TCut W2Cut = Form("W2 > %g && W2 < %g",W2min,W2max);
-  TCut dyCut = Form("dy > %g && dy < %g",dymin,dymax);
-  //TCut coinCut = Form("abs(coin_time - %g) < %g*2",coin_time_cut[0],coin_time_cut[1]);
-  TCut coinCut = "coinCut";
-  
-  TCut DataCut = W2Cut && coinCut;
-  TCut CutSimP = Form("(W2 > %g && W2 < %g && fnucl == 1) * weight",W2min,W2max);
-  TCut CutSimN = Form("(W2 > %g && W2 < %g && fnucl == 0) * weight",W2min,W2max);
-  
-  if(use_dy_cut){
-    DataCut = DataCut && dyCut;
-    CutSimP = Form("(W2 > %g && W2 < %g && dy > %g && dy < %g && fnucl == 1) * weight",W2min,W2max,dymin,dymax);
-    CutSimN = Form("(W2 > %g && W2 < %g && dy > %g && dy < %g && fnucl == 0) * weight",W2min,W2max,dymin,dymax);
+  for(int ibin=0; ibin < nbinsW2; ibin++){
+    Yp_array[ibin] = 0;
+    Ym_array[ibin] = 0;
   }
 
-  T_data->Draw("dx>>hdx_data",DataCut);
-  T_data->Draw("dx>>hdx_bg_data",coinCut && W2Cut && !dyCut);
-  T_sim->Draw("dx>>hdx_sim_p",CutSimP);
-  T_sim->Draw("dx>>hdx_sim_n",CutSimN);
+ 
+  //map<int,bool> good_run;
+  //Analysis::check_run_helicity(T,runnums,&good_run);
   
-  double scale = hdx_data->Integral();
-
-  hdx_data->Scale(1.0/hdx_data->Integral());
-  Analysis::hdx_sim_p->Scale(1.0/Analysis::hdx_sim_p->Integral());
-  Analysis::hdx_sim_n->Scale(1.0/Analysis::hdx_sim_n->Integral());
-  Analysis::hdx_bg_data->Scale(1.0/Analysis::hdx_bg_data->Integral());
-
-  Analysis::He3_sim_fit(hdx_data);
-
-  //Copy all the result histograms
-  TH1F *hdx_sim_p = new TH1F(*Analysis::hdx_sim_p);
-  TH1F *hdx_sim_n = new TH1F(*Analysis::hdx_sim_n);
-  TH1F *hdx_bg = new TH1F(*Analysis::hdx_bg);
-  TH1F *hdx_total_fit = new TH1F(*Analysis::hdx_total_fit);
-
-
-  gStyle->SetOptFit(0);
+  int nevent = 0;
+  int total = 0;
   
-  hdx_data->SetTitle("Data/Simulation Comparisons " + cfg + ";#Deltax (m);Entries");
+  while(T->GetEntry(nevent++)){
+   
+    if(helicity != -1 && helicity != 1) continue;
+    if(W2 < W2min_r || W2 > W2max_r) continue;
+    if(!coinCut) continue;
+    if(!fGoodHel[runnum]) continue;
+    
+    hW2_x->Fill(W2,dx);
+ 
+    int W2bin = (int) ((W2 - W2min_r) / W2bin_size);
+    helicity *= -1*IHWP*IHWP_Flip;
 
-  hdx_data->Scale(scale);
-  hdx_total_fit->Scale(scale);
-  hdx_sim_p->Scale(scale);
-  hdx_sim_n->Scale(scale);
-  hdx_bg->Scale(scale);
-
-  hdx_data->SetMarkerStyle(kFullCircle);
-  hdx_total_fit->SetFillColorAlpha(30,0.5);
-  hdx_sim_p->SetFillColorAlpha(kRed,0.3);
-  hdx_sim_n->SetFillColorAlpha(kBlue,0.3);
-  hdx_bg->SetFillColorAlpha(kMagenta,0.3);
-
-  hdx_total_fit->SetLineStyle(7);
-  hdx_sim_p->SetLineStyle(7);
-  hdx_sim_n->SetLineStyle(7);
-  hdx_bg->SetLineStyle(7);
+    if(dx > n_dxmin && dx < n_dxmax){ //Cut around neutron in dx
+      if(W2bin == 10) total++;
+      if(helicity == 1)
+	Yp_array[W2bin]++;
+      else if(helicity == -1)
+	Ym_array[W2bin]++;
+    }
+  }
   
-  hdx_total_fit->SetLineColor(30);
-  hdx_sim_p->SetLineColor(kRed);
-  hdx_sim_n->SetLineColor(kBlue);
-  hdx_bg->SetLineColor(kMagenta);
-  
+  for(int ibin=0; ibin < nbinsW2; ibin++){
+    W2_array[ibin] = W2min_r + (ibin + 1) * W2bin_size - W2bin_size/2;
+    A_array[ibin] = (Yp_array[ibin] - Ym_array[ibin])*1.0/(Yp_array[ibin] + Ym_array[ibin]);
+    A_err_array[ibin] = sqrt((1 - A_array[ibin]*A_array[ibin])/(Yp_array[ibin] + Ym_array[ibin])) * 100;
+    A_array[ibin] *= 100; //convert to percentage
+  }
+
+  TGraphErrors *gA = new TGraphErrors(nbinsW2,W2_array,A_array,0,A_err_array);
+ 
+  gA->SetTitle(";W^{2} (GeV^{2});A (%)");
+  hW2_x->SetTitle(cfg + " Kinematics with Asymmetry;;#Deltax (m)");
+  gA->SetMarkerStyle(8);
+
+  gA->GetXaxis()->SetLabelSize(0.1);
+  gA->GetYaxis()->SetLabelSize(0.1);
+  hW2_x->GetYaxis()->SetLabelSize(0.05);
+  gA->GetXaxis()->SetTitleSize(0.10);
+  gA->GetYaxis()->SetTitleSize(0.10);
+  hW2_x->GetYaxis()->SetTitleSize(0.05);
+  gA->GetYaxis()->SetTitleOffset(0.28);
+  hW2_x->GetYaxis()->SetTitleOffset(0.35);
+
   TCanvas *c = new TCanvas("c","",800,600);
-  hdx_data->Draw();
-  hdx_total_fit->Draw("same hist");
-  hdx_sim_p->Draw("same hist");
-  hdx_sim_n->Draw("same hist");
-  hdx_bg->Draw("same hist");
+  
+  TPad *pad1 = new TPad("pad1", "pad1", 0, 0.3, 1, 1);
+  TPad *pad2 = new TPad("pad2", "pad2", 0, 0, 1, 0.3);
+  
+  pad1->SetBottomMargin(0.00); // Set bottom margin for pad1
+  pad2->SetTopMargin(0.00); // Set top margin for pad2
+  pad2->SetBottomMargin(0.30);
+  
+  pad1->Draw();
+  pad2->Draw();
 
-  TString bg_fit_type;
+  TLine *lymin = new TLine(W2min_r,n_dxmin,W2max_r,n_dxmin);
+  TLine *lymax = new TLine(W2min_r,n_dxmax,W2max_r,n_dxmax);
+  lymin->SetLineColor(kRed);
+  lymax->SetLineColor(kRed);
+  
+  pad1->cd();
+  pad1->SetGridx();
+  hW2_x->Draw("colz");
+  lymin->Draw("same");
+  lymax->Draw("same");
 
-  if(Analysis::bg_option == "pol4")
-    bg_fit_type = "BG 4th od fit";
-  else if(Analysis::bg_option == "from data")
-    bg_fit_type = "BG from data";
-  else if(Analysis::bg_option == "pol3")
-    bg_fit_type = "BG 3rd od fit";
-  else if(Analysis::bg_option == "gaus")
-    bg_fit_type = "BG Gaussian";
-
-  TLegend *legend = new TLegend(0.65,0.72,0.89,0.89);
-  legend->AddEntry("hdx_data","Data","p");
-  legend->AddEntry("hdx_total_fit","MC Fit","lf");
-  legend->AddEntry("hdx_sim_p","MC p","lf");
-  legend->AddEntry("hdx_sim_n","MC n","lf");
-  legend->AddEntry("hdx_bg",bg_fit_type,"lf");
-  legend->SetLineColor(0);
-  legend->Draw("same");
-
-  TPaveText *pt = new TPaveText(.65,.50,.88,.70,"ndc");
+  TPaveText *pt = new TPaveText(.13,.10,.38,.20,"ndc");
   pt->AddText("Cuts on good tracks");
   pt->AddText("Coincidence Cuts");
-  pt->AddText(Form("%g < W^{2} < %g",W2min,W2max));
-  if(use_dy_cut) pt->AddText(Form("%g < #Deltay < %g",dymin,dymax));
-  pt->AddText(Form("%i Neutrons",(int)hdx_sim_n->GetSumOfWeights()))->SetTextColor(kBlue);
   pt->SetFillColor(0);
   pt->Draw("same");
 
+  TLegend *legend = new TLegend(0.13,0.03,0.38,0.10);
+  legend->AddEntry(lymin,"#Deltax cut applied below","l");
+  legend->SetLineColor(0);
+  legend->Draw("same");
+  
+  pad2->cd();
+  pad2->SetGridx();
+  gA->Draw("AP");
+  gA->GetXaxis()->SetLimits(W2min_r,W2max_r);
+  gA->GetYaxis()->SetRangeUser(-3,8);
+  
+  TLine *l0 = new TLine(W2min_r,0,W2max_r,0);
+  l0->Draw("same");
 
-  TString output = "Data_sim_"+input+".pdf";
+  TString output = "Asymmetry_W2bins_"+input+".pdf";
   
   c->SaveAs("../../plots/" + output);
-
-
-  TCanvas *c2 = new TCanvas("c2","",800,600);
-  Analysis::hdx_bg_data->Draw("hist");
+  
 }

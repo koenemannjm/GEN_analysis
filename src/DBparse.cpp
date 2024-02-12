@@ -9,7 +9,7 @@ namespace DBparse {
     cout<<"---------------------------------------------------------------"<<endl;
     //Check if file exists
     if (!file_csv.is_open()) {
-      cout<<"!!!!WARNING, ERROR: File "<<file<<" is not found"<<endl;
+      cout<<"!!!!WARNING, ERROR, DBparse::BD_load: File "<<file<<" is not found"<<endl;
       exit(0);
     }
     else {
