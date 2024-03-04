@@ -13,6 +13,10 @@ namespace kine {
       double Nmass = 0.5*(constant::Mn + constant::Mp);
       temp = ebeam/(1. + (ebeam/Nmass)*(1.0 - cos(etheta)));
     }
+    else if (Ntype.compare("pim") == 0) {
+      double Nmass = 0.5*(constant::Mn + constant::Mp);
+      temp = ebeam/(1. + (ebeam/Nmass)*(1.0 - cos(etheta)));
+    }
     else if (Ntype.compare("C") == 0) {
       double Nmass = 0.5*(constant::Mn + constant::Mp);
       temp = ebeam/(1. + (ebeam/Nmass)*(1.0 - cos(etheta)));
@@ -30,14 +34,16 @@ namespace kine {
     return atan2(Peprime.Py(), Peprime.Px());
   }
   //--------------------------------------------
-  void SetPN(std::string Ntype, TLorentzVector &PN) {
-    if (Ntype.compare("p") == 0) 
+  void SetPN(TString Ntype, TLorentzVector &PN) {
+    if (Ntype == "p") 
       PN.SetPxPyPzE(0., 0., 0., constant::Mp);
-    else if (Ntype.compare("n") == 0) 
+    else if (Ntype == "n") 
       PN.SetPxPyPzE(0., 0., 0., constant::Mn);
-    else if (Ntype.compare("np") == 0) 
+    else if (Ntype == "np") 
       PN.SetPxPyPzE(0., 0., 0., 0.5*(constant::Mn+constant::Mp));
-    else if (Ntype.compare("C") == 0) 
+    else if (Ntype == "pim") 
+      PN.SetPxPyPzE(0., 0., 0., 0.5*(constant::Mn+constant::Mp));
+    else if (Ntype == "C") 
       PN.SetPxPyPzE(0., 0., 0., 0.5*(constant::Mn+constant::Mp));
     else
       std::cerr << "[KinematicVar::pcentral] Enter a valid nucleon type! **!**" << std::endl;
@@ -49,6 +55,8 @@ namespace kine {
     else if (Ntype.compare("n") == 0)      
       return sqrt(pow(nu, 2.) + 2. * constant::Mn * nu);
     else if (Ntype.compare("np") == 0)      
+      return sqrt(pow(nu, 2.) + 2. * 0.5*(constant::Mn+constant::Mp) * nu);
+    else if (Ntype.compare("pim") == 0)      
       return sqrt(pow(nu, 2.) + 2. * 0.5*(constant::Mn+constant::Mp) * nu);
     else if (Ntype.compare("C") == 0)
       return sqrt(pow(nu, 2.) + 2. * 0.5*(constant::Mn+constant::Mp) * nu);
@@ -121,6 +129,9 @@ namespace kine {
 
     xyHCALexpect.push_back(xexpect_HCAL);
     xyHCALexpect.push_back(yexpect_HCAL);
+
+    //TVector3 HCALmeas(xyHCALmeas[0],xyHCALmeas[0];
+    //TVector3 direction = 
   }
   //--------------------------------------------
   double Q2(double ebeam, double eeprime, double etheta) {
@@ -134,6 +145,8 @@ namespace kine {
     else if (Ntype.compare("n") == 0) 
       temp = pow(constant::Mn,2.0) + 2.0*constant::Mn*(ebeam-eeprime) - Q2;
     else if (Ntype.compare("np") == 0) 
+      temp = pow(0.5*(constant::Mn+constant::Mp),2.0) + 2.0*0.5*(constant::Mn+constant::Mp)*(ebeam-eeprime) - Q2;
+    else if (Ntype.compare("pim") == 0) 
       temp = pow(0.5*(constant::Mn+constant::Mp),2.0) + 2.0*0.5*(constant::Mn+constant::Mp)*(ebeam-eeprime) - Q2;
     else if (Ntype.compare("C") == 0) 
       temp = pow(0.5*(constant::Mn+constant::Mp),2.0) + 2.0*0.5*(constant::Mn+constant::Mp)*(ebeam-eeprime) - Q2;

@@ -54,18 +54,26 @@ void do_fit_pol1(TCanvas *c, TH1D *h1,double bg_low, double bg_high, double sign
 
   h1->Fit("gaus_func","qNR");
   h1->Fit("bg_func","qNR+");
-
+  
   gaus_func->GetParameters(&par[0]);
   bg_func->GetParameters(&par[3]);
+  
+  total_func->FixParameter(3,par[3]);
+  total_func->FixParameter(4,par[4]);
+  total_func->SetParLimits(0,par[0]*0.95,par[0]*1.05);
+  total_func->SetParLimits(1,par[1]*0.95,par[1]*1.05);
+  total_func->SetParLimits(2,par[2]*0.95,par[2]*1.05);
 
   total_func->SetParameters(par);
   h1->Fit(total_func,"qNR+"); 
-  total_func->GetParameters(&par[0]);
-  //gaus_func->SetParameters(&par[0]);
+  //total_func->GetParameters(&par[0]);
 
   total_func->Draw("same");
-
-  cout<<par[1]<<" +/- "<<par[2]<<endl;
+   
+  TPaveText *pt = new TPaveText(.11,.6,.45,.73,"ndc");
+  pt->AddText(Form("Coin Time = %g +/- %g ns",par[1],par[2]));
+  pt->SetFillColor(0);
+  pt->Draw("same");
 
 }
 
@@ -74,84 +82,61 @@ void coinc_analysis(TString cfg = "GEN2"){
 
   gStyle->SetOptStat(0);
 
-  // Get analyzed data for H2 and He3
-  TFile *H2_file = new TFile("../outfiles/QE_data_" + cfg + "_sbs100p_nucleon_p_model1.root","read");
-  TFile *He3_file = new TFile("../outfiles/QE_data_" + cfg + "_sbs100p_nucleon_np_model2.root","read");
+  TString jmgr_file = "../../config/" + cfg + "_He3.cfg";
+  Utilities::KinConf He3_kin = Utilities::LoadKinConfig(jmgr_file);
 
-  TTree *T = (TTree*)H2_file->Get("Tout");
+  jmgr_file = "../../config/" + cfg + "_H2.cfg";
+  Utilities::KinConf H2_kin = Utilities::LoadKinConfig(jmgr_file);
 
-  T->SetBranchStatus("*",0);
+  analyzed_tree *T_He3 = Utilities::LoadAnalyzedRootFiles(He3_kin,1,1);
+  analyzed_tree *T_H2 = Utilities::LoadAnalyzedRootFiles(H2_kin,0,1);
 
-  const int maxClus = 1000;
-  int runnum;   setrootvar::setbranch(T,"runnum","",&runnum);
-  bool WCut;   setrootvar::setbranch(T,"WCut","",&WCut);
-  bool pCut;   setrootvar::setbranch(T,"pCut","",&pCut);
-  bool nCut;   setrootvar::setbranch(T,"nCut","",&nCut);
-  bool coinCut;   setrootvar::setbranch(T,"coinCut","",&coinCut);
-  double W2;   setrootvar::setbranch(T,"W2","",&W2);
-  double dx;   setrootvar::setbranch(T,"dx","",&dx);
-  double dy;   setrootvar::setbranch(T,"dy","",&dy);
-  double coin_time;   setrootvar::setbranch(T,"coinT_trig","",&coin_time);
-  double hcal_time;   setrootvar::setbranch(T,"hcal_time","",&hcal_time);
-  double bbcal_time;   setrootvar::setbranch(T,"bbcal_time","",&bbcal_time);
-  int nhodo_clus;   setrootvar::setbranch(T,"nhodo_clus","",&nhodo_clus);
-  double hodo_time[maxClus];   setrootvar::setbranch(T,"hodo_time","",&hodo_time);
-  int helicity;   setrootvar::setbranch(T,"helicity","",&helicity);
-  int IHWP;   setrootvar::setbranch(T,"IHWP","",&IHWP);
-  
+  vector<double> dx_n = He3_kin.dx_n;
+  double Nsigma_dx_n = He3_kin.Nsigma_dx_n;
+  vector<double> dy_n = He3_kin.dy_n;
+  double Nsigma_dy_n = He3_kin.Nsigma_dy_n;
+  double dxmin = dx_n[0] - dx_n[1];
+  double dxmax = dx_n[0] + dx_n[1];
+  double dymin = dy_n[0] - dy_n[1];
+  double dymax = dy_n[0] + dy_n[1];
+
   TH1D *h_coinc_H2_cal = new TH1D("h_coinc_H2_cal","H2 Coincidence Time;HCal TDC Time (ns) - BBCal ADC Time; Entries",150,-10,200);
   TH1D *h_coinc_H2_hodo = new TH1D("h_coinc_H2_hodo","H2 Coincidence Time;HCal TDC Time (ns) - Hodo TDC Time; Entries",150,-10,200);
-
-  int nevent = 0;
-
-  //Loop over all events on the H2 file
-  while(T->GetEntry(nevent++)){
-    double Wrecon = sqrt(max(0., W2));
-
-    if(WCut){ // Fill the histograms with the different times
-      h_coinc_H2_cal->Fill(hcal_time - bbcal_time);
-      h_coinc_H2_hodo->Fill(hcal_time - hodo_time[0]);
-    }
-
-  }
-
   
-  T->Delete();
+  int nevent = 0;
+  int maxevent = T_H2->fChain->GetEntries();
+  
+  //Loop over all events on the H2 file
+  while(nevent < maxevent){
+    T_H2->GetEntry(nevent++); 
 
-  T = (TTree*)He3_file->Get("Tout"); //Switch to He3 file now
+    if(T_H2->W2 < H2_kin.W2min || T_H2->W2 > H2_kin.W2max) continue;
+    if(T_H2->dy < H2_kin.dymin || T_H2->dy > H2_kin.dymax) continue;
 
-  T->SetBranchStatus("*",0);
-
-  setrootvar::setbranch(T,"runnum","",&runnum);
-  setrootvar::setbranch(T,"WCut","",&WCut);
-  setrootvar::setbranch(T,"pCut","",&pCut);
-  setrootvar::setbranch(T,"nCut","",&nCut);
-  setrootvar::setbranch(T,"coinCut","",&coinCut);
-  setrootvar::setbranch(T,"W2","",&W2);
-  setrootvar::setbranch(T,"dx","",&dx);
-  setrootvar::setbranch(T,"dy","",&dy);
-  setrootvar::setbranch(T,"coinT_trig","",&coin_time);
-  setrootvar::setbranch(T,"hcal_time","",&hcal_time);
-  setrootvar::setbranch(T,"bbcal_time","",&bbcal_time);
-  setrootvar::setbranch(T,"nhodo_clus","",&nhodo_clus);
-  setrootvar::setbranch(T,"hodo_time","",&hodo_time);
-  setrootvar::setbranch(T,"helicity","",&helicity);
-  setrootvar::setbranch(T,"IHWP","",&IHWP);
- 
-
-  TH1D *h_coinc_He3_cal = new TH1D("h_coinc_He3_cal","He3 Coincidence Time;HCal ADC Time (ns) - BBCal ADC Time; Entries",150,40,200);
+    h_coinc_H2_cal->Fill(T_H2->hcal_time - T_H2->bbcal_time);
+    h_coinc_H2_hodo->Fill(T_H2->hcal_time - T_H2->hodo_time[0]);
+    
+  }
+  
+  
+  TH1D *h_coinc_He3_cal = new TH1D("h_coinc_He3_cal","He3 Coincidence Time;HCal ADC Time (ns) - BBCal ADC Time; Entries",150,40,180);
   TH1D *h_coinc_He3_hodo = new TH1D("h_coinc_He3_hodo","He3 Coincidence Time;HCal TDC Time (ns) - Hodo TDC Time; Entries",150,-100,100);
   
 
   nevent = 0;
+  maxevent = T_He3->fChain->GetEntries();
 
-  while(T->GetEntry(nevent++)){
+  //Loop over all events on the H2 file
+  while(nevent < maxevent){
+    T_He3->GetEntry(nevent++); 
 
-    if(WCut){
-      h_coinc_He3_cal->Fill(hcal_time - bbcal_time);
-      h_coinc_He3_hodo->Fill(hcal_time - hodo_time[0]);  
-    }
-
+    if(T_He3->W2 < He3_kin.W2min || T_He3->W2 > He3_kin.W2max) continue;
+    if(T_He3->dy < dymin || T_He3->dy > dymax) continue;
+    if(T_He3->dx < dxmin || T_He3->dx > dxmax) continue;
+    
+    h_coinc_He3_cal->Fill(T_He3->hcal_time - T_He3->bbcal_time);
+    h_coinc_He3_hodo->Fill(T_He3->hcal_time - T_He3->hodo_time[0]); 
+    
   }
 
   TCanvas *c1 = new TCanvas("c1","",800,600);
@@ -160,7 +145,7 @@ void coinc_analysis(TString cfg = "GEN2"){
 
   TCanvas *c2 = new TCanvas("c2","",800,600);
   h_coinc_He3_cal->Draw();
-  do_fit_pol4(c2,h_coinc_He3_cal,60,200,150,165); //Fit He3 data
+  do_fit_pol1(c2,h_coinc_He3_cal,40,200,89,95); //Fit He3 data
 
 
 }

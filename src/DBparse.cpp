@@ -16,6 +16,10 @@ namespace DBparse {
       cout<<"DB file found: "<<file<<endl;
     }
 
+    //These are used to tell what type of file this is
+    bool is_runnum = false;
+    bool is_time = false;
+
     string line;
     int iline=0;
 
@@ -44,8 +48,21 @@ namespace DBparse {
 	  // Now loop over the DB and see if this variable is there
 	  for(int irow=0; irow < row.size();irow++){
 	      
-	    if(irow == 0) continue;   //Ignore the run number cell
-	    
+	    if(irow == 0){
+	      if(row[irow] == "Run Number") is_runnum = true;
+	      else if(row[irow] == "Time") is_time = true;
+	      
+	      if(!is_time && !is_runnum){
+		cout<<"!!!!WARNING, ERROR, DBparse::BD_load: Name "<<row[irow]<<" in file "<<file<<" is not supported"<<endl;
+		cout<<"Available options are: "<<endl;
+		cout<<"Run Number"<<endl;
+		cout<<"Time"<<endl;
+		exit(0);
+	      }
+
+	      continue;   //Ignore the run number cell
+	    }
+
 	    if(row[irow] == request[ivar].name){
 	      var_found[ivar] = true;
 	      var_index[ivar] = irow;
@@ -65,9 +82,13 @@ namespace DBparse {
       
 	//Now inser the data into the map
 	//This map is from run number to the variable in question
-	for(int ivar=0; ivar < nvar; ivar++)
-	  if(var_found[ivar])
-	    request[ivar].var_map->insert(std::make_pair(stoi(row[0]),stod(row[var_index[ivar]])));
+	for(int ivar=0; ivar < nvar; ivar++){
+	  if(var_found[ivar]){
+	    if(is_runnum) request[ivar].var_map_runnum->insert(std::make_pair(stoi(row[0]),stod(row[var_index[ivar]])));
+	    else if(is_time) request[ivar].var_map_time->insert(std::make_pair(Utilities::SetTime(row[0]),stod(row[var_index[ivar]])));
+	  }
+	}
+
 	
       }
     }

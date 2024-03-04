@@ -19,7 +19,7 @@ void getDB(TString DB_file){
   // Entries should follow this form:
   //{var name, variable pointer, vairable description, 1/0 (mandatory/not mandatory variable)}
   DBparse::DBRequest request[] = {
-    {"Good Helicity", &fGoodHel, "Is the helicity readback good (0/1 = no/yes)", 1}
+    {"Good Helicity", &fGoodHel, NULL, "Is the helicity readback good (0/1 = no/yes)", 1}
   };
   
   const int nvar = sizeof(request) / sizeof(request[0]);
@@ -27,7 +27,7 @@ void getDB(TString DB_file){
   DB_load(DB_file,request,nvar);
 }
 
-void Asymmetry_checks(TString input = "GEN2",TString tgt = "He3"){
+void Asymmetry_checks(TString cfg = "GEN2",TString tgt = "He3"){
 
   gStyle->SetOptStat(0);
   gStyle->SetOptFit(1);
@@ -35,83 +35,31 @@ void Asymmetry_checks(TString input = "GEN2",TString tgt = "He3"){
   TString DB_file = "../../DB/Helicity_quality.csv";
   getDB(DB_file);
 
-  TString cfg = input;
-  TString cfg_sim = input;
-  if(input == "GEN4all"){
-    cfg = "GEN4";
-    cfg_sim = "GEN4";
-  }
-  else if(input == "GEN4b") cfg_sim = "GEN4";
+  TString jmgr_file = "../../config/" + cfg + "_He3.cfg";
+  Utilities::KinConf kin_info = Utilities::LoadKinConfig(jmgr_file);
 
+  double W2min = kin_info.W2min;
+  double W2max = kin_info.W2max;
 
-  TString jmgr_file = "../../config/" + cfg + "_" + tgt + ".cfg";
-  JSONManager *jmgr = new JSONManager(jmgr_file);
+  double dy_bg_min = kin_info.dymin;
+  double dy_bg_max = kin_info.dymax;
 
-  std::vector<int> runnums; jmgr->GetVectorFromKey<int>("runnums",runnums);
+  vector<double> dx_n = kin_info.dx_n;
+  double Nsigma_dx_n = kin_info.Nsigma_dx_n;
+  vector<double> dy_n = kin_info.dy_n;
+  double Nsigma_dy_n = kin_info.Nsigma_dy_n;
+  double dxmin = dx_n[0] - dx_n[1];
+  double dxmax = dx_n[0] + dx_n[1];
+  double dymin = dy_n[0] - dy_n[1];
+  double dymax = dy_n[0] + dy_n[1];
 
-  if(input == "GEN4all"){
-    TString jmgr_file_4b = "../../config/GEN4b_" + tgt + ".cfg";
-    JSONManager *jmgr_4b = new JSONManager(jmgr_file_4b);   
-    std::vector<int> runnums_4b; jmgr_4b->GetVectorFromKey<int>("runnums",runnums_4b);
+  int IHWP_Flip = kin_info.IHWP_Flip;
 
-    runnums.insert( runnums.end(), runnums_4b.begin(), runnums_4b.end() );
-  }
+  double coin_min = kin_info.coin_time_cut[0] - kin_info.Nsigma_coin_time*kin_info.coin_time_cut[1];
+  double coin_max = kin_info.coin_time_cut[0] + kin_info.Nsigma_coin_time*kin_info.coin_time_cut[1];
 
-
-   // elastic cut limits
-  double W2min = jmgr->GetValueFromKey<double>("W2min");
-  double W2max = jmgr->GetValueFromKey<double>("W2max");
-  //W2min = 0.48;
-  //W2max = 1.28;
-
-  double dymin = jmgr->GetValueFromKey<double>("dymin");
-  double dymax = jmgr->GetValueFromKey<double>("dymax");
-  //dymin = -1.2;
-  //dymax = 1.2;
-
-  vector<double> dx_n; jmgr->GetVectorFromKey<double>("dx_n", dx_n);
-  double Nsigma_cut_dx_n = jmgr->GetValueFromKey<double>("Nsigma_cut_dx_n");
-  double n_dxmin = dx_n[0] - Nsigma_cut_dx_n*dx_n[1];
-  double n_dxmax = dx_n[0] + Nsigma_cut_dx_n*dx_n[1];
-
-  int IHWP_Flip = jmgr->GetValueFromKey<int>("IHWP_Flip");
-
-  vector<double> coin_time_cut; jmgr->GetVectorFromKey<double>("coin_time", coin_time_cut);
-
-  TString reaction = "np";
-  if(tgt == "H2") reaction = "p";
-  TString model = "2";
-  if(tgt == "H2") model = "1";
-
-  //Read the He3 run and H2 data files
-  TFile *data_file = new TFile("../outfiles/QE_data_" + cfg + "_sbs100p_nucleon_" + reaction + "_model" + model + ".root","read");
+  analyzed_tree *T_data = Utilities::LoadAnalyzedRootFiles(kin_info,1,1);
   
-  TChain *T = new TChain("Tout");
-  if(input == "GEN4all"){
-    T->Add("../outfiles/QE_data_GEN4_sbs100p_nucleon_np_model2.root");
-    T->Add("../outfiles/QE_data_GEN4b_sbs100p_nucleon_np_model2.root");
-  }
-  else {
-    T->Add("../outfiles/QE_data_" + cfg + "_sbs100p_nucleon_np_model2.root");
-  }
-
-  T->SetBranchStatus("*",0);
-
-  // This is the variables we need from the analyzed root file
-  int runnum;   setrootvar::setbranch(T,"runnum","",&runnum);
-  bool WCut;   setrootvar::setbranch(T,"WCut","",&WCut);
-  bool pCut;   setrootvar::setbranch(T,"pCut","",&pCut);
-  bool nCut;   setrootvar::setbranch(T,"nCut","",&nCut);
-  bool coinCut;   setrootvar::setbranch(T,"coinCut","",&coinCut);
-  double W2;   setrootvar::setbranch(T,"W2","",&W2);
-  double dx;   setrootvar::setbranch(T,"dx","",&dx);
-  double dy;   setrootvar::setbranch(T,"dy","",&dy);
-  double coin_time;   setrootvar::setbranch(T,"coin_time","",&coin_time);
-  double hcal_time;   setrootvar::setbranch(T,"hcal_time","",&hcal_time);
-  double hodo_time[1000];   setrootvar::setbranch(T,"hodo_time","",&hodo_time);
-  int helicity;   setrootvar::setbranch(T,"helicity","",&helicity);
-  int IHWP;   setrootvar::setbranch(T,"IHWP","",&IHWP);
-
   /////Set the histograms
   int nbinsdx = 100;
   double xmin = -4;
@@ -155,32 +103,36 @@ void Asymmetry_checks(TString input = "GEN2",TString tgt = "He3"){
     Yp_array[ibin] = 0;
     Ym_array[ibin] = 0;
   }
-
- 
-  //map<int,bool> good_run;
-  //Analysis::check_run_helicity(T,runnums,&good_run);
   
   int nevent = 0;
-  int total = 0;
+  int maxevent = T_data->fChain->GetEntries();
+  int N_p = 0, N_m = 0;
   
-  while(T->GetEntry(nevent++)){
-   
-    if(helicity != -1 && helicity != 1) continue;
-    if(W2 < W2min_r || W2 > W2max_r) continue;
-    if(!coinCut) continue;
-    if(!fGoodHel[runnum]) continue;
+  while(nevent < maxevent){
+    T_data->GetEntry(nevent++);
     
-    hW2_x->Fill(W2,dx);
- 
-    int W2bin = (int) ((W2 - W2min_r) / W2bin_size);
-    helicity *= -1*IHWP*IHWP_Flip;
+    int helicity = T_data->helicity;
+    helicity *= -1*T_data->IHWP*IHWP_Flip; 
 
-    if(dx > n_dxmin && dx < n_dxmax){ //Cut around neutron in dx
-      if(W2bin == 10) total++;
-      if(helicity == 1)
+    if(!fGoodHel[T_data->runnum]) continue;   
+    if(helicity != -1 && helicity != 1) continue;
+    if(T_data->coin_time < coin_min || T_data->coin_time > coin_max) continue;
+    if(T_data->W2 < W2min_r || T_data->W2 > W2max_r) continue;
+    if(T_data->dy > dy_bg_min && T_data->dy < dy_bg_max) continue;
+
+    hW2_x->Fill(T_data->W2,T_data->dx);
+ 
+    int W2bin = (int) ((T_data->W2 - W2min_r) / W2bin_size);
+
+    if(T_data->dx > dxmin && T_data->dx < dxmax){ //Cut around neutron in dx
+      if(helicity == 1){
 	Yp_array[W2bin]++;
-      else if(helicity == -1)
+	N_p++;
+      }
+      else if(helicity == -1){
 	Ym_array[W2bin]++;
+	N_m++;
+      }
     }
   }
   
@@ -218,8 +170,8 @@ void Asymmetry_checks(TString input = "GEN2",TString tgt = "He3"){
   pad1->Draw();
   pad2->Draw();
 
-  TLine *lymin = new TLine(W2min_r,n_dxmin,W2max_r,n_dxmin);
-  TLine *lymax = new TLine(W2min_r,n_dxmax,W2max_r,n_dxmax);
+  TLine *lymin = new TLine(W2min_r,dxmin,W2max_r,dxmin);
+  TLine *lymax = new TLine(W2min_r,dxmax,W2max_r,dxmax);
   lymin->SetLineColor(kRed);
   lymax->SetLineColor(kRed);
   
@@ -249,7 +201,9 @@ void Asymmetry_checks(TString input = "GEN2",TString tgt = "He3"){
   TLine *l0 = new TLine(W2min_r,0,W2max_r,0);
   l0->Draw("same");
 
-  TString output = "Asymmetry_W2bins_"+input+".pdf";
+  cout<<N_p - N_m<<" "<<N_p + N_m<<" "<<1.0*(N_p - N_m) / (N_p + N_m)<<endl;
+
+  TString output = "Asymmetry_W2bins_"+cfg+".pdf";
   
   c->SaveAs("../../plots/" + output);
   

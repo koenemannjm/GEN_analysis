@@ -24,7 +24,7 @@ namespace kine{
   double ephi(TLorentzVector Peprime);    // Angle of scattering plane (rad)
 
   // Constructing target nucleon 4-momentum (assuming at rest)
-  void SetPN(std::string Ntype, TLorentzVector &PN);
+  void SetPN(TString Ntype, TLorentzVector &PN);
 
   // expected recoil nucleon momentum
   double pN_expect(double nu,             // energy of the virtual photon (GeV)

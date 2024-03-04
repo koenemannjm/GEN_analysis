@@ -8,7 +8,40 @@
 
 #include "../include/ExpConstants.h"
 
-namespace util_pd {
+
+
+namespace Utilities {
+
+  struct KinConf {
+    TString conf;
+    int sbsmag;
+    int model;
+    int IHWP_Flip;
+    TString Ntype;
+    TCut globalcut;
+    double sbs_kick;
+    vector<double> dx_p;
+    vector<double> dy_p;
+    vector<double> dx_n;
+    vector<double> dy_n;
+    double Nsigma_dx_p;
+    double Nsigma_dy_p;
+    double Nsigma_dx_n;
+    double Nsigma_dy_n;
+    vector<double> hdx_lim;
+    vector<double> hdy_lim;
+    double hcal_voffset;
+    double hcal_hoffset;
+    double W2min;
+    double W2max;
+    double dymin;
+    double dymax;
+    vector<double> coin_time_cut;
+    double Nsigma_coin_time;
+    string rootfile_dir;
+    vector<int> runnums;
+    int nruns;
+  };
 
   /* #################################################
      ##                HCAL Histograms              ##  
@@ -31,6 +64,13 @@ namespace util_pd {
   TH1F *TH1FhW(std::string name);   // returns W histogram
   TH1F *TH1FhQ2(std::string name,   // returns Q2 histogram
 		int conf);   // SBS config
+
+
+  TDatime SetTime(string time_str);
+  KinConf LoadKinConfig();
+  TChain *LoadRawRootFiles(KinConf kin_info, bool is_data);
+  analyzed_tree *LoadAnalyzedRootFiles(KinConf kin_info, bool is_data, bool is_reduced);
+
 }
 
 #endif

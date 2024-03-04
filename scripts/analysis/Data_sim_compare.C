@@ -13,14 +13,24 @@
 #include "../../include/gen-ana.h"
 
 
+
 void Data_sim_compare(TString input = "GEN2",TString tgt = "He3"){
 
   gStyle->SetOptStat(0);
   gStyle->SetOptFit(1);
 
-  Analysis::bg_option = "pol4";
+  Analysis::fbg_shape_option = "pol4";
   bool use_dy_cut = false;
 
+  TString jmgr_file = "../../config/" + input + "_" + tgt + ".cfg";
+
+  Utilities::KinConf kin_info = Utilities::LoadKinConfig(jmgr_file);
+
+  TChain *T_data = Utilities::LoadAnalyzedRootFiles(kin_info,1);
+  TChain *T_sim = Utilities::LoadAnalyzedRootFiles(kin_info,0);
+  
+  TString cfg = kin_info.conf;
+  /*
   TString cfg = input;
   TString cfg_sim = input;
   if(input == "GEN4all"){
@@ -28,47 +38,18 @@ void Data_sim_compare(TString input = "GEN2",TString tgt = "He3"){
     cfg_sim = "GEN4";
   }
   else if(input == "GEN4b") cfg_sim = "GEN4";
+  */
 
-
-  TString jmgr_file = "../../config/" + cfg + "_" + tgt + ".cfg";
-  JSONManager *jmgr = new JSONManager(jmgr_file);
 
    // elastic cut limits
-  double W2min = jmgr->GetValueFromKey<double>("W2min");
-  double W2max = jmgr->GetValueFromKey<double>("W2max");
-  //W2min = 0.48;
-  //W2max = 1.28;
+  double W2min = kin_info.W2min;
+  double W2max = kin_info.W2max;
+  double dymin = kin_info.dymin;
+  double dymax = kin_info.dymax;
 
-  double dymin = jmgr->GetValueFromKey<double>("dymin");
-  double dymax = jmgr->GetValueFromKey<double>("dymax");
-  //dymin = -1.2;
-  //dymax = 1.2;
-
-  vector<double> coin_time_cut; jmgr->GetVectorFromKey<double>("coin_time", coin_time_cut);
-
-  TString reaction = "np";
-  if(tgt == "H2") reaction = "p";
-  TString model = "2";
-  if(tgt == "H2") model = "1";
-
-  //Read the He3 run and H2 data files
-  TFile *data_file = new TFile("../outfiles/QE_data_" + cfg + "_sbs100p_nucleon_" + reaction + "_model" + model + ".root","read");
-
-  //Read the He3 run and H2 simulation files
-  TFile *sim_file = new TFile("../outfiles/QE_sim_" + cfg_sim + "_sbs100p_nucleon_" + reaction + "_model" + model + ".root","read");
-
-  //Get the TTrees
-  TTree *T_sim = (TTree*)sim_file->Get("Tout");
+  vector<double> coin_time_cut = kin_info.coin_time_cut; 
   
-  TChain *T_data = new TChain("Tout");
-  if(input == "GEN4all"){
-    T_data->Add("../outfiles/QE_data_GEN4_sbs100p_nucleon_np_model2.root");
-    T_data->Add("../outfiles/QE_data_GEN4b_sbs100p_nucleon_np_model2.root");
-  }
-  else {
-    T_data->Add("../outfiles/QE_data_" + cfg + "_sbs100p_nucleon_np_model2.root");
-  }
-
+  
   /////Set the histograms
   int nbins = 100;
   double xmin = -4;
@@ -113,14 +94,14 @@ void Data_sim_compare(TString input = "GEN2",TString tgt = "He3"){
   Analysis::hdx_bg_data->Scale(1.0/Analysis::hdx_bg_data->Integral());
 
   Analysis::He3_sim_fit(hdx_data);
-
+  
   //Copy all the result histograms
   TH1F *hdx_sim_p = new TH1F(*Analysis::hdx_sim_p);
   TH1F *hdx_sim_n = new TH1F(*Analysis::hdx_sim_n);
   TH1F *hdx_bg = new TH1F(*Analysis::hdx_bg);
   TH1F *hdx_total_fit = new TH1F(*Analysis::hdx_total_fit);
 
-
+  
   gStyle->SetOptFit(0);
   
   hdx_data->SetTitle("Data/Simulation Comparisons " + cfg + ";#Deltax (m);Entries");
@@ -156,13 +137,13 @@ void Data_sim_compare(TString input = "GEN2",TString tgt = "He3"){
 
   TString bg_fit_type;
 
-  if(Analysis::bg_option == "pol4")
+  if(Analysis::fbg_shape_option == "pol4")
     bg_fit_type = "BG 4th od fit";
-  else if(Analysis::bg_option == "from data")
+  else if(Analysis::fbg_shape_option == "from data")
     bg_fit_type = "BG from data";
-  else if(Analysis::bg_option == "pol3")
+  else if(Analysis::fbg_shape_option == "pol3")
     bg_fit_type = "BG 3rd od fit";
-  else if(Analysis::bg_option == "gaus")
+  else if(Analysis::fbg_shape_option == "gaus")
     bg_fit_type = "BG Gaussian";
 
   TLegend *legend = new TLegend(0.65,0.72,0.89,0.89);
@@ -186,9 +167,6 @@ void Data_sim_compare(TString input = "GEN2",TString tgt = "He3"){
 
   TString output = "Data_sim_"+input+".pdf";
   
-  c->SaveAs("../../plots/" + output);
-
-
-  TCanvas *c2 = new TCanvas("c2","",800,600);
-  Analysis::hdx_bg_data->Draw("hist");
+  //c->SaveAs("../../plots/" + output);
+  
 }

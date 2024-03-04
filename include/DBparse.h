@@ -6,7 +6,8 @@ namespace DBparse {
 
   struct DBRequest{
     TString           name;      // Variable name, should match the DB file
-    map<int,double>*  var_map;   // Data from the DB file
+    map<int,double>*  var_map_runnum;   // Data from the DB file
+    map<TDatime,double>*  var_map_time;   // Data from the DB file
     TString           info;      // Extra info about this variable
     bool              mandatory; // 
   };
