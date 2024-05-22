@@ -7,6 +7,7 @@ class analyzed_tree {
     TChain *fChain;
     
     int runnum;
+    TDatime *datetime;
     //cuts
     bool WCut;
     bool pCut;
@@ -56,9 +57,8 @@ class analyzed_tree {
     double dx;
     double dy;
     //GRINCH
-    int ngrinch_hits;
-    double xGRINCH[100];
-    double yGRINCH[100];
+    double grinch_track;
+    double grinch_clus_size;
     //Timing Information
     double coin_time;
     double hcal_time;

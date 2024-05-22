@@ -1,6 +1,33 @@
 #include "../include/Utilities.h"
 
 namespace Utilities {
+  
+  void DrawLines(TVirtualPad *pad, double xmin, double xmax, Color_t color){
+    
+    pad->Update();
+    pad->cd();
+    TLine *l_min = new TLine(xmin,pad->GetUymin(),xmin,pad->GetUymax());
+    TLine *l_max = new TLine(xmax,pad->GetUymin(),xmax,pad->GetUymax());
+    l_min->SetLineColor(color);  
+    l_max->SetLineColor(color);  
+    l_min->SetLineWidth(2);  
+    l_max->SetLineWidth(2);  
+    l_min->Draw("same");    
+    l_max->Draw("same");   
+
+  }
+
+
+  TBox *DrawBox(TVirtualPad *pad, double xmin, double xmax, Color_t color){
+
+    pad->Update();
+    pad->cd();
+    TBox *box = new TBox(xmin, pad->GetUymin(), xmax, pad->GetUymax());
+    box->SetFillColorAlpha(color, 0.2);
+    box->Draw("same");
+
+    return box;
+  }
 
   /* #################################################
      ##                HCAL Related                 ##  
@@ -93,17 +120,27 @@ namespace Utilities {
     return time;
   }
 
-  KinConf LoadKinConfig(TString config_file){
+  KinConf LoadKinConfig(TString config_file, bool is_data){
     
     KinConf kin_info;
 
     JSONManager *jmgr = new JSONManager(config_file.Data());
 
+    //These variables are currently not in simulated files
+    if(is_data){
+      kin_info.IHWP_Flip = jmgr->GetValueFromKey<int>("IHWP_Flip");
+      kin_info.dymin = jmgr->GetValueFromKey<double>("dymin");
+      kin_info.dymax = jmgr->GetValueFromKey<double>("dymax");
+      jmgr->GetVectorFromKey<double>("coin_time", kin_info.coin_time_cut);
+      kin_info.Nsigma_coin_time = jmgr->GetValueFromKey<double>("Nsigma_coin_time");
+      jmgr->GetVectorFromKey<int>("runnums",kin_info.runnums);
+      kin_info.nruns = jmgr->GetValueFromKey<int>("Nruns_to_ana");
+    }
+
     // seting up the desired SBS configuration
     kin_info.conf = jmgr->GetValueFromKey_str("GEN_config");
     kin_info.sbsmag = jmgr->GetValueFromKey<int>("SBS_magnet_percent");
 
-    kin_info.IHWP_Flip = jmgr->GetValueFromKey<int>("IHWP_Flip");
 
     // Choosing the model of calculation
     // model 0 => uses reconstructed p as independent variable
@@ -137,15 +174,11 @@ namespace Utilities {
     // Analysis cut limits
     kin_info.W2min = jmgr->GetValueFromKey<double>("W2min");
     kin_info.W2max = jmgr->GetValueFromKey<double>("W2max");
-    kin_info.dymin = jmgr->GetValueFromKey<double>("dymin");
-    kin_info.dymax = jmgr->GetValueFromKey<double>("dymax");
-    jmgr->GetVectorFromKey<double>("coin_time", kin_info.coin_time_cut);
-    kin_info.Nsigma_coin_time = jmgr->GetValueFromKey<double>("Nsigma_coin_time");
+    
     
     // File information
     kin_info.rootfile_dir = jmgr->GetValueFromKey_str("rootfile_dir");
-    jmgr->GetVectorFromKey<int>("runnums",kin_info.runnums);
-    kin_info.nruns = jmgr->GetValueFromKey<int>("Nruns_to_ana"); 
+     
 
     return kin_info;
 
@@ -180,7 +213,8 @@ namespace Utilities {
     
     TChain *T = new TChain("Tout");
     
-    TString file_dir = "/w/halla-scshelf2102/sbs/jeffas/GEN_analysis/scripts/outfiles/";
+    TString file_dir = "/w/halla-scshelf2102/sbs/jeffas/GEN_analysis/scripts/outfiles/good_files/";
+    //TString file_dir = "/lustre19/expphy/volatile/halla/sbs/jeffas/GEN_root/pion_test/";
     TString root_file;
     if(!is_data)
       root_file = "QE_sim_" + kin_info.conf + "_sbs" + kin_info.sbsmag + "p_nucleon_" + kin_info.Ntype + "_model" + kin_info.model + ".root";

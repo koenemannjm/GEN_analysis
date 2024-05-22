@@ -36,7 +36,7 @@ int QuasiElastic_sim_ana(const std::string configfilename, std::string filebase=
   TStopwatch *sw = new TStopwatch(); sw->Start();
   
   // reading input config file ---------------------------------------
-  Utilities::KinConf kin_info = Utilities::LoadKinConfig(configdir + configfilename);
+  Utilities::KinConf kin_info = Utilities::LoadKinConfig(configdir + configfilename,0);
   
   // parsing trees
   TChain *C = LoadRawRootFiles(kin_info, 0);
@@ -127,6 +127,11 @@ int QuasiElastic_sim_ana(const std::string configfilename, std::string filebase=
   std::vector<void*> hcalclvar_mem = {&eHCAL,&xHCAL,&yHCAL,&rblkHCAL,&cblkHCAL,&idblkHCAL,&tdctimeHCAL};
   setrootvar::setbranch(C, "sbs.hcal", hcalclvar, hcalclvar_mem);
   
+  // grinch var
+  double grinch_track,grinch_clus_size;
+  std::vector<std::string> grinchvar = {"trackindex","size"};
+  std::vector<void*> grinchvar_mem = {&grinch_track,&grinch_clus_size};
+  setrootvar::setbranch(C, "bb.grinch.clus", grinchvar, grinchvar_mem);
 
   // track var
   double ntrack, p[maxNtr],px[maxNtr],py[maxNtr],pz[maxNtr],xTr[maxNtr],yTr[maxNtr],thTr[maxNtr],phTr[maxNtr];
@@ -224,7 +229,9 @@ int QuasiElastic_sim_ana(const std::string configfilename, std::string filebase=
   double T_yHCAL_exp;   Tout->Branch("yHCAL_exp", &T_yHCAL_exp, "yHCAL_exp/D"); 
   double T_dx;          Tout->Branch("dx", &T_dx, "dx/D"); 
   double T_dy;          Tout->Branch("dy", &T_dy, "dy/D");
-
+  //GRINCH
+  double T_grinch_track;    Tout->Branch("grinch_track", &T_grinch_track, "grinch_track/D");
+  double T_grinch_clus_size;    Tout->Branch("grinch_clus_size", &T_grinch_clus_size, "grinch_clus_size/D");
 
   // Do the energy loss calculation here ...........
 
@@ -287,6 +294,10 @@ int QuasiElastic_sim_ana(const std::string configfilename, std::string filebase=
     weight = mc_sigma*mc_omega;
     //weight = mc_simc_weight * luminosity[run_inc] * genvol[run_inc] * (1.0 / Ntried[run_inc]);
     
+    //Grinch info
+    T_grinch_track = grinch_track;
+    T_grinch_clus_size = grinch_clus_size;
+
     // kinematic parameters
     double ebeam = sbsconf.GetEbeam();       // Expected beam energy (GeV) [Get it from EPICS, eventually]
     double ebeam_corr = ebeam; //- MeanEloss;

@@ -13,6 +13,8 @@
 
 #include "../../include/gen-ana.h"
 
+double coin_min;
+double coin_max;
 
 void do_fit_pol4(TCanvas *c, TH1D *h1,double bg_low, double bg_high, double signal_low,double signal_high){
 
@@ -34,8 +36,6 @@ void do_fit_pol4(TCanvas *c, TH1D *h1,double bg_low, double bg_high, double sign
   //gaus_func->SetParameters(&par[0]);
 
   total_func->Draw("same");
-
-  //cout<<par[1]<<" +/- "<<par[2]<<endl;
 
   TPaveText *pt = new TPaveText(.11,.6,.45,.73,"ndc");
   pt->AddText(Form("Coin Time = %g +/- %g ns",par[1],par[2]));
@@ -69,7 +69,10 @@ void do_fit_pol1(TCanvas *c, TH1D *h1,double bg_low, double bg_high, double sign
   //total_func->GetParameters(&par[0]);
 
   total_func->Draw("same");
-   
+
+  coin_min = par[1] - 5*par[2];
+  coin_max = par[1] + 5*par[2];   
+
   TPaveText *pt = new TPaveText(.11,.6,.45,.73,"ndc");
   pt->AddText(Form("Coin Time = %g +/- %g ns",par[1],par[2]));
   pt->SetFillColor(0);
@@ -83,10 +86,10 @@ void coinc_analysis(TString cfg = "GEN2"){
   gStyle->SetOptStat(0);
 
   TString jmgr_file = "../../config/" + cfg + "_He3.cfg";
-  Utilities::KinConf He3_kin = Utilities::LoadKinConfig(jmgr_file);
+  Utilities::KinConf He3_kin = Utilities::LoadKinConfig(jmgr_file,1);
 
   jmgr_file = "../../config/" + cfg + "_H2.cfg";
-  Utilities::KinConf H2_kin = Utilities::LoadKinConfig(jmgr_file);
+  Utilities::KinConf H2_kin = Utilities::LoadKinConfig(jmgr_file,1);
 
   analyzed_tree *T_He3 = Utilities::LoadAnalyzedRootFiles(He3_kin,1,1);
   analyzed_tree *T_H2 = Utilities::LoadAnalyzedRootFiles(H2_kin,0,1);
@@ -128,6 +131,7 @@ void coinc_analysis(TString cfg = "GEN2"){
 
   //Loop over all events on the H2 file
   while(nevent < maxevent){
+    //while(nevent < 5000000){
     T_He3->GetEntry(nevent++); 
 
     if(T_He3->W2 < He3_kin.W2min || T_He3->W2 > He3_kin.W2max) continue;
@@ -139,13 +143,15 @@ void coinc_analysis(TString cfg = "GEN2"){
     
   }
 
+  
+
   TCanvas *c1 = new TCanvas("c1","",800,600);
   h_coinc_H2_cal->Draw();
   do_fit_pol4(c1,h_coinc_H2_cal,-10,200,60,100); //Fit H2 data
 
   TCanvas *c2 = new TCanvas("c2","",800,600);
   h_coinc_He3_cal->Draw();
-  do_fit_pol1(c2,h_coinc_He3_cal,40,200,89,95); //Fit He3 data
-
-
+  do_fit_pol1(c2,h_coinc_He3_cal,40,200,85,100); //Fit He3 data
+  Utilities::DrawLines(c2->cd(), coin_min, coin_max, kRed);
+  
 }

@@ -26,35 +26,46 @@
 #include "../../include/gen-ana.h"
 
 
-map<TDatime,double> fHe3Pol;
+DBparse::DBInfo DBInfo;
 
-void getDB(TString DB_file){
+// Load database files
+void getDB(TString cfg){
+  
+  cout<<"Attempting to load DB File"<<endl;
+  cout<<"---------------------------------------------------------------"<<endl;
 
-  // Entries should follow this form:
-  //{var name, runnum variable pointer, time variable pointer, variable description, 1/0 (mandatory/not mandatory variable)}
-  //Note: pointer can be set to NULL if it is a runnum or time denoted file
-  DBparse::DBRequest request[] = {
-    {"He3 Polarization", NULL, &fHe3Pol, "He3 Polarization", 0}
+   vector<DBparse::DBrequest> request = {
+     {"He3 Polarization","He3 target polarization", 1},
+     {"Beam Polarization","Beam Polarization values",1},
+     {"Helicity Quality","Helicity readback good? (0/1 = bad/good)",1},
+     {"Moller Quality","Moller measurements known? (0/1 = no/yes)",1},
+     {"Field Measurement","Magnetic field direction",1}
   };
-  
-  const int nvar = sizeof(request) / sizeof(request[0]);
-  
-  DB_load(DB_file,request,nvar);
-}
 
+  DBInfo.cfg = cfg;
+  DBInfo.var_req = request;
+
+  DB_load(DBInfo);
+
+  cout<<"---------------------------------------------------------------"<<endl;
+
+}
 
 
 int QuasiElastic_ana(const std::string configfilename, std::string filebase="../outfiles/QE_data")
 {
 
   string configdir = "../../config/";
+
   gErrorIgnoreLevel = kError; // Ignores all ROOT warnings
 
   // Define a clock to get macro processing time
   TStopwatch *sw = new TStopwatch(); sw->Start();
 
   // reading input config file ---------------------------------------
-  Utilities::KinConf kin_info = Utilities::LoadKinConfig(configdir + configfilename);
+  Utilities::KinConf kin_info = Utilities::LoadKinConfig(configdir + configfilename,1);
+
+  getDB(kin_info.conf);
 
   // parsing trees
   TChain *C = LoadRawRootFiles(kin_info, 1);
@@ -120,13 +131,10 @@ int QuasiElastic_ana(const std::string configfilename, std::string filebase="../
   
 
   // grinch var
-  const int maxHit = 1000;
-  double grinch_x[maxHit],grinch_y[maxHit];
-  int ngrinch_hits;
-  std::vector<std::string> grinchvar = {"xhit","yhit"};
-  std::vector<void*> grinchvar_mem = {&grinch_x,&grinch_y};
-  setrootvar::setbranch(C, "bb.grinch_tdc.hit", grinchvar, grinchvar_mem);
-  setrootvar::setbranch(C,"Ndata.bb.grinch_tdc.hit","time",&ngrinch_hits);  
+  double grinch_track,grinch_clus_size;
+  std::vector<std::string> grinchvar = {"trackindex","size"};
+  std::vector<void*> grinchvar_mem = {&grinch_track,&grinch_clus_size};
+  setrootvar::setbranch(C, "bb.grinch_tdc.clus", grinchvar, grinchvar_mem);
   
 
   // hodoscope
@@ -214,6 +222,7 @@ int QuasiElastic_ana(const std::string configfilename, std::string filebase="../
   // Defining interesting ROOT tree branches 
   TTree *Tout = new TTree("Tout", "");
   int T_runnum;         Tout->Branch("runnum", &T_runnum, "runnum/I");
+  TDatime T_datetime;   Tout->Branch("datetime", "TDatime", &T_datetime);
   //cuts
   bool WCut;            Tout->Branch("WCut", &WCut, "WCut/B");
   bool pCut;            Tout->Branch("pCut", &pCut, "pCut/B");
@@ -264,9 +273,8 @@ int QuasiElastic_ana(const std::string configfilename, std::string filebase="../
   double T_dy;          Tout->Branch("dy", &T_dy, "dy/D");
   double T_theta_pq;    Tout->Branch("theta_pq", &T_theta_pq, "theta_pq/D");
   //GRINCH
-  int T_ngrinch_hits;           Tout->Branch("ngrinch_hits", &T_ngrinch_hits, "ngrinch_hits/I");
-  double T_grinch_x[maxHit];    Tout->Branch("xGRINCH", &T_grinch_x, "xGRINCH[ngrinch_hits]/D");
-  double T_grinch_y[maxHit];    Tout->Branch("yGRINCH", &T_grinch_y, "yGRINCH[ngrinch_hits]/D");
+  double T_grinch_track;    Tout->Branch("grinch_track", &T_grinch_track, "grinch_track/D");
+  double T_grinch_clus_size;    Tout->Branch("grinch_clus_size", &T_grinch_clus_size, "grinch_clus_size/D");
   
   //Timing Information
   double T_coin_time;           Tout->Branch("coin_time", &T_coin_time, "coin_time/D");
@@ -319,6 +327,7 @@ int QuasiElastic_ana(const std::string configfilename, std::string filebase="../
   std::cout << std::endl;
   long nevent = 0, nevents = C->GetEntries(); 
   int treenum = 0, currenttreenum = 0, currentrunnum = 0;
+  int IHWP_run = -100;  
   time_t run_time_unix;  
 
   cout<<"Processing "<<nevents<<" events"<<endl;
@@ -328,6 +337,8 @@ int QuasiElastic_ana(const std::string configfilename, std::string filebase="../
     // print progress 
     if( nevent % 1000 == 0 ) std::cout << nevent*100.0/nevents << "% \r";
     std::cout.flush();
+
+    
 
     // apply global cuts efficiently (AJRP method)
     currenttreenum = C->GetTreeNumber();
@@ -347,13 +358,26 @@ int QuasiElastic_ana(const std::string configfilename, std::string filebase="../
       TDatime run_time = Run_Data->GetDate();
       run_time.Set(run_time.GetYear(),run_time.GetMonth(),run_time.GetDay(),run_time.GetHour(),run_time.GetMinute(),0);
       run_time_unix = run_time.Convert();
+
+      // We must loop over a small subset to get the correct IHWP state for the entire run
+      //First we do some stuff to max sure we dont reach the file limit
+      int file_nevents = C->GetTree()->GetEntries();
+      int max_events = 8000;
+      if(file_nevents < max_events) max_events = file_nevents - 100;
+      
+      int start_event = nevent;
+      while (C->GetEntry(start_event++) && start_event < nevent + max_events){
+	if(IHWP == 1 || IHWP == -1) IHWP_run = IHWP;
+      }
+      C->GetEntry(nevent - 1);
+
     }
- 
+    
     bool passedgCut = GlobalCut->EvalInstance(0) != 0;  
     
     if (!passedgCut) continue;
-
-
+    
+    
     double bbcal_trig_time=0., hcal_trig_time=0.;
     for(int ihit=0; ihit<tdcElemN; ihit++){
       if(tdcElem[ihit]==5) bbcal_trig_time=tdcTrig[ihit];
@@ -365,9 +389,14 @@ int QuasiElastic_ana(const std::string configfilename, std::string filebase="../
     int time_rel = evtime*time_interval*1e-9 / 60; //in min, rounded
 
     TDatime time_abs(run_time_unix + time_rel * 60); //Add the relative minutes
-    
-    auto it = fHe3Pol.find(time_abs);
-    T_He3Pol = it->second;
+
+    auto it = DBInfo.He3Pol.find(time_abs); // Get Polarization from the table
+    if(it == DBInfo.He3Pol.end())
+      T_He3Pol = -1;
+    else
+      T_He3Pol = it->second;
+
+    T_datetime = time_abs;
     
     //Timing Information
     T_hcal_time = atimeHCAL[0];
@@ -383,17 +412,13 @@ int QuasiElastic_ana(const std::string configfilename, std::string filebase="../
       
     coinCut = coin_time > coin_time_cut[0] - Nsigma_coin_time*coin_time_cut[1] && coin_time < coin_time_cut[0] + Nsigma_coin_time*coin_time_cut[1];
       
-    //Grinch time and position
-    T_ngrinch_hits = ngrinch_hits;
-    for(int ihit = 0; ihit < ngrinch_hits; ihit++){
-      T_grinch_x[ihit] = grinch_x[ihit];
-      T_grinch_y[ihit] = grinch_y[ihit];
-    }
+    //Grinch info
+    T_grinch_track = grinch_track;
+    T_grinch_clus_size = grinch_clus_size;
     
-   
     //Beam helicity information
     T_helicity = helicity;
-    T_IHWP = IHWP;
+    T_IHWP = IHWP_run;
 
     //BPMs and Rasters
     T_BPMAx = BPMAx;

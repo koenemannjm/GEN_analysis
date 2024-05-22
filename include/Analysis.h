@@ -1,20 +1,30 @@
 #ifndef Analysis_H
 #define Analysis_H
 
-// These are all assumptions, to be refined later
+// These are variables found in the analysis result
+double u_n = -1.9130427;
 double P_n = 0.86;    //Set for now, but check later
 double P_p = -0.03;    //Set for now, but check later
-double P_beam = 0.85; //Set for now, but check later
-double P_He3 = 0.45;  //Set for now, but check later
-double theta_spin = 0;//Set for now, but check later
-double phi_spin = 0;  //Set for now, but check later
+double P_beam_avg = 0;
+double P_beam_avg_err = 0;
+double P_He3_avg = 0;
+double P_He3_avg_err = 0;
+double field_hor_ang = 0;
+double field_vert_ang = 0;
 
 // Values for expansion to calculate GE/GM
 const int nexp = 6;
 double T_avg[nexp] = {0};
 double T_1_Q2_avg = 0;
 double Q2_avg = 0;
-int count_avg = 0;
+double tau_avg = 0;
+double epsilon_avg = 0;
+double Px_avg = 0;
+double Pz_avg = 0;
+int count_avg_exp = 0;
+double GEGM;
+double GEGM_stat_err;
+double GEGM_sys_err;
 
 TVector3 TargetPolDirection;
 
@@ -26,14 +36,33 @@ double GetYield(TH1F *h, double xmin, double xmax){
 }
 
 // Sets the target polarization direction
-void SetHe3Pol(){
-  TargetPolDirection.SetMagThetaPhi(1.0, theta_spin, phi_spin);
+void SetHe3PolAngle(){
+  double phi_rad = field_vert_ang*TMath::Pi()/180.0;  
+  double theta_rad = field_hor_ang*TMath::Pi()/180.0;
+  
+  TargetPolDirection.SetMagThetaPhi(1.0, theta_rad, phi_rad);
+}
+
+// Calcualtes the error assuming A = Np - Nm / Np + Nm
+double CalcAsymErr(int Np, int Nm){
+  double D = Np - Nm;
+  double N = Np + Nm;
+  return sqrt((N*N - D*D)/(N*N*N));
+}
+
+double CalcFractionErr(double Nx, double N){
+  return sqrt(Nx/(N*N) + Nx*Nx/(N*N*N));
 }
 
 
-void UpdateExpansionCoefficients(analyzed_tree *T);
-void AsymExpansion();
-void GetGEGM();
+void UpdateAverageKinematics(analyzed_tree *T);
+double GetGEGMFromTheory(bool is_neutron, double Q2);
+double GetAFromQ2(bool is_neutron, double Q2);
+double GetGEGMFromA(double A, double A_err);
+void GetGEGMFromA_old(double A);
+
+
+double GetAFromGEGM_theory(double GEGM,double etheta, double Q2);
 
 // Class to handle the distributions and the fitting procedure
 class distribution_fits {
@@ -51,7 +80,7 @@ class distribution_fits {
   TH1F *hdx_total_fit;
 
   // Function sets the background shape from a string. 
-  // Options: pol3, pol4, gaus, from data
+  // Options: pol2, pol3, pol4, gaus, from data
   void SetBgShapeOption(TString bg_shape){
     bg_shape_option = bg_shape;
     bg_shape_set = true;
@@ -81,6 +110,7 @@ class distribution_fits {
   double fitbg_pol4(double *x, double *par);
   double fitsim(double *x, double *par);
   double fitbg_pol3(double *x, double *par);
+  double fitbg_pol2(double *x, double *par);
   double fitbg_gaus(double *x, double *par);  
   
   void He3_fit_dists();
@@ -94,17 +124,47 @@ class distribution_fits {
 class analyzed_info {
  public:
 
-  // raw +/- helicities
+  //This is used for counts for a single run
+  struct run_info {
+    int N_raw_p;
+    int N_raw_m;
+    double P_He3;
+    double P_beam[2];
+    int count_avg;
+    bool run_init;
+    
+    //Starting values
+  run_info() : N_raw_p(0), N_raw_m(0), P_He3(0), count_avg(0), run_init(false) {}
+  };
+
+  std::map<int, run_info> Asym_runs;
+
+  void IterateRawCount(int key, int helicity){ // Add helicity raw counts
+    if(helicity == 1) Asym_runs[key].N_raw_p++;
+    else if(helicity == -1) Asym_runs[key].N_raw_m++;
+  } 
+  void UpdatePolHe3(int key, double Pol){
+    Pol /= 100; //convert to decimal;
+    Asym_runs[key].count_avg++;
+    Asym_runs[key].P_He3 += (Pol - Asym_runs[key].P_He3) / Asym_runs[key].count_avg;
+  }
+  void SetAvgPol();
+  void SetPolBeam(int key, TDatime *evtime, vector<vector<TDatime*>> PolTime, vector<vector<double>> PolVal);
+
+
+
   int N_raw_p = 0;
   int N_raw_m = 0;
 
   // accidental background +/- helicities
-  int N_bg_p = 0;
-  int N_bg_m = 0;
+  int N_acc_p = 0;
+  int N_acc_m = 0;
+  int N_acc_cont = 0;
 
   // Pion +/- helicities
   int N_pion_p = 0;
   int N_pion_m = 0;
+  int N_pion_cont = 0;
 
   // Number of protons
   int N_proton = 0;
@@ -120,73 +180,61 @@ class analyzed_info {
 
   // Asymmetry values for each contribution
   double A_raw;
-  double A_bg;
+  double A_acc = -1000;
   double A_p;
-  double A_pion;
-  double A_in;
+  double A_pion = -1000;
+  double A_in = -1000;;
   double A_FSI;
   double A_phys;
 
   // Signal fractions for each contribution
-  double f_bg;
-  double f_N2;
+  double f_acc = -1000;
+  double f_N2 = -1000;
   double f_p;
-  double f_pion;
-  double f_in;
+  double f_pion = -1000;
+  double f_in = -1000;
   double f_FSI;
   double f_n;
 
-  // Dilutions for each contribution (outdated, no longer in use)
-  double D_bg;
-  double D_N2;
-  double D_p;
-  double D_pion;
-  double D_in;
-
   // Asymmetry errors
   double A_raw_err;
-  double A_bg_err;
+  double A_acc_err = -1000;
+  double A_in_err = -1000;
   double A_p_err;
+  double A_pion_err = -1000;
   double A_phys_stat_err;
   double A_phys_sys_err;
-  
-  // Dilution errors (outdated, no longer in use)
-  double D_bg_err;
-  double D_N2_err;
-  double D_p_err;
-  double D_in_err;
+  double A_phys_tot_err;
 
   // Signal fraction errors
-  double f_bg_err;
-  double f_N2_err;
+  double f_acc_err = -1000;
+  double f_N2_err = -1000;
   double f_p_err;
-  double f_pion_err;
-  double f_in_err;
+  double f_pion_err = -1000;
+  double f_in_err = -1000;
   double f_FSI_err;
+
+  // Form Factor results
+  double GEGM;
 
 
   void SetNProton(int N){ 
     N_proton = N;
   }
-  void IterateRawCount(int helicity){ // Add helicity raw counts
-    if(helicity == 1) N_raw_p++;
-    else if(helicity == -1) N_raw_m++;
+  void IterateAccidentalCount(int helicity){ // Add helicity accidental background counts
+    if(helicity == 1) N_acc_p++;
+    else if(helicity == -1) N_acc_m++;
   } 
-  void IterateBgCount(int helicity){ // Add helicity accidental backgroun counts
-    if(helicity == 1) N_bg_p++;
-    else if(helicity == -1) N_bg_m++;
+  void IterateAccidentalCont(){ // Add counts for accidentals inside QE cuts
+    N_acc_cont++;
   } 
-  void IterateInelasticCount(int helicity){ // Add helicity inelastic ounts
-   if(helicity == 1) N_in_p++;
-    else if(helicity == -1) N_in_m++;
-  } 
-  void SetNInelContamination(int N){ // Set helicity number inside cuts
-    N_in_cont = N;
-  }
   
-
-  void CalcAsymValsOld();
   void CalcAsymVals();
+  
+  double CalcAsymFractionErr(double A_f, double f_err){
+    double P = P_He3_avg*P_beam_avg*P_n;
+    return (P*A_phys - A_f) / (P*f_n)*f_err;
+  }
 
   // Constructor
   analyzed_info() { }

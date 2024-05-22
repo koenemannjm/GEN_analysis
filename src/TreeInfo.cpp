@@ -13,6 +13,7 @@ analyzed_tree::analyzed_tree(TChain *tree,bool is_data, bool is_reduced) : fChai
 void analyzed_tree::Init(TChain *tree,bool is_data, bool is_reduced)
 {
   runnum = 0;
+  datetime = new TDatime();
   WCut = false;
   pCut = false;
   nCut = false;
@@ -56,7 +57,8 @@ void analyzed_tree::Init(TChain *tree,bool is_data, bool is_reduced)
   yHCAL_exp = 0;
   dx = 0;
   dy = 0;
-  ngrinch_hits = 0;
+  grinch_track = 0;
+  grinch_clus_size = 0;
   coin_time = 0;
   hcal_time = 0;
   bbcal_time = 0;
@@ -78,7 +80,7 @@ void analyzed_tree::Init(TChain *tree,bool is_data, bool is_reduced)
 
   fChain = tree;
 
-  fChain->SetBranchStatus("*",0);
+  //fChain->SetBranchStatus("*",0);
 
   // These tree variables should always be read
   setrootvar::setbranch(fChain,"WCut","",&WCut);
@@ -98,6 +100,7 @@ void analyzed_tree::Init(TChain *tree,bool is_data, bool is_reduced)
   }
   else { // These variables are only in the data files
     setrootvar::setbranch(fChain,"runnum","",&runnum);
+    setrootvar::setbranch(fChain,"datetime","",&datetime);
     setrootvar::setbranch(fChain,"coin_time","",&coin_time);
     setrootvar::setbranch(fChain,"hcal_time","",&hcal_time);
     setrootvar::setbranch(fChain,"bbcal_time","",&bbcal_time);
@@ -105,6 +108,7 @@ void analyzed_tree::Init(TChain *tree,bool is_data, bool is_reduced)
     setrootvar::setbranch(fChain,"hodo_time","",&hodo_time);
     setrootvar::setbranch(fChain,"helicity","",&helicity);
     setrootvar::setbranch(fChain,"IHWP","",&IHWP);
+    setrootvar::setbranch(fChain,"He3Pol","",&He3Pol);
   }
   if(!is_reduced) {// If not reduced than we read everything
     if(is_data){// Only data files has these
@@ -115,10 +119,6 @@ void analyzed_tree::Init(TChain *tree,bool is_data, bool is_reduced)
       setrootvar::setbranch(fChain,"xPS","",&xPS);
       setrootvar::setbranch(fChain,"xSH","",&xSH);
       setrootvar::setbranch(fChain,"ySH","",&ySH);
-      setrootvar::setbranch(fChain,"ngrinch_hits","",&ngrinch_hits);
-      setrootvar::setbranch(fChain,"xGRINCH","",&xGRINCH);
-      setrootvar::setbranch(fChain,"yGRINCH","",&yGRINCH);
-      
     }
     setrootvar::setbranch(fChain,"fiduCut","",&fiduCut);
     setrootvar::setbranch(fChain,"ebeam","",&ebeam);
@@ -145,6 +145,8 @@ void analyzed_tree::Init(TChain *tree,bool is_data, bool is_reduced)
     setrootvar::setbranch(fChain,"yHCAL","",&yHCAL);
     setrootvar::setbranch(fChain,"xHCAL_exp","",&xHCAL_exp);
     setrootvar::setbranch(fChain,"yHCAL_exp","",&yHCAL_exp);
+    setrootvar::setbranch(fChain,"grinch_track","",&grinch_track);
+    setrootvar::setbranch(fChain,"grinch_clus_size","",&grinch_clus_size);
   }
   
 }

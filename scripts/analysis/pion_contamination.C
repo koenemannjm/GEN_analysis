@@ -12,114 +12,422 @@
 
 #include "../../include/gen-ana.h"
 
-TH1F *hpse_sim_He3;
-TH1F *hpse_sim_pim;
+TH1F *hpse_pi;
+TH1F *hpse_e;
+
+int nbins = 150;
+double hxmin = 0;
+double hxmax = 2;
+double acc_scale = 0.0;
+
+
+DBparse::DBInfo DBInfo;
+
+// Load database files
+void getDB(TString cfg){
+  
+  cout<<"Attempting to load DB File"<<endl;
+  cout<<"---------------------------------------------------------------"<<endl;
+
+   vector<DBparse::DBrequest> request = {
+     {"Helicity Quality","Helicity readback good? (0/1 = bad/good)",1},
+     {"Asymmetry Correction","All asymmetry correction parameters",1}
+  };
+
+  DBInfo.cfg = cfg;
+  DBInfo.var_req = request;
+
+  DB_load(DBInfo);
+
+  cout<<"---------------------------------------------------------------"<<endl;
+
+}
+
+struct ShowerHists{
+
+  TH1F *hdata;
+  
+  TH1F *hpi_final;
+  TH1F *he_final;
+  TH1F *htotal_final;
+  TString Type;
+
+};
 
 // Fit for preshower simulation
 double fitdist( double *x, double *par){
   double dx = x[0];
   
-  double Norm_He3 = par[0];
-  double Norm_pi = par[1];
-  double ps_scale_He3 = par[2];
-  double ps_scale_pi = par[3];
+  double Norm_pi = par[0];
+  double Norm_e = par[1];
     
-  double simu = Norm_He3 * hpse_sim_He3->Interpolate(ps_scale_He3 * dx) + Norm_pi * hpse_sim_pim->Interpolate(ps_scale_pi * dx);
+  double simu = Norm_pi * hpse_pi->Interpolate(dx) + Norm_e * hpse_e->Interpolate(dx);
   
   return simu;   
 }
 
-void pion_contamination(){
+
+void dofitting(ShowerHists &all_hists){
+
+  TH1F *hdata_input = all_hists.hdata;
+
+  double scale = 1.0/hdata_input->Integral();
+  hdata_input->Scale(scale);
+  
+  //Set fit to function fitsim
+  TF1 *FitFunc = new TF1( "FitFunc", fitdist,hxmin,hxmax,2);
+
+  //Set some arbitrary starting values
+  FitFunc->SetNpx(1000);
+  double startpar[] = {1.0,1.0};
+  FitFunc->SetParameters(startpar);
+  FitFunc->SetParLimits(0,0.0001,10);
+  FitFunc->SetParLimits(1,0.0001,10);
+  
+  hdata_input->Fit(FitFunc,"q0","",hxmin,hxmax);
+
+  double R_pi = FitFunc->GetParameter(0);
+  double R_e = FitFunc->GetParameter(1);
+  
+  TH1F *hpse_total = new TH1F("hpse_total_" + all_hists.Type,"",nbins,hxmin,hxmax);
+  TH1F *hpse_pi_fit = (TH1F*)hpse_pi->Clone("hpse_pi_" + all_hists.Type);
+  TH1F *hpse_e_fit = (TH1F*)hpse_e->Clone("hpse_e_" + all_hists.Type);
+  
+  hdata_input->Scale(1.0/scale*acc_scale);
+  hpse_pi_fit->Scale(1.0/scale*R_pi*acc_scale);
+  hpse_e_fit->Scale(1.0/scale*R_e*acc_scale);
+  
+  for(int ibin = 0; ibin < nbins;ibin++){
+    hpse_total->SetBinContent(ibin,hpse_pi_fit->GetBinContent(ibin) + hpse_e_fit->GetBinContent(ibin));
+  }
+  
+  all_hists.hpi_final = hpse_pi_fit;
+  all_hists.he_final = hpse_e_fit;
+  all_hists.htotal_final = hpse_total;
+  
+  all_hists.hdata->SetMarkerStyle(kFullCircle);
+  all_hists.hpi_final->SetLineColor(kRed);
+  all_hists.htotal_final->SetLineColor(kMagenta);
+}
+
+
+void pion_contamination(TString cfg = "GEN2"){
 
   gErrorIgnoreLevel = kError; // Ignores all ROOT warnings
   gStyle->SetOptStat(0);
   gStyle->SetOptFit(0);
 
+  getDB(cfg);
 
-  TString jmgr_He3 = "../../config/GEN2_He3.cfg";
-  TString jmgr_pim = "../../config/GEN2_pim_sim.cfg";
-  Utilities::KinConf kin_He3 = Utilities::LoadKinConfig(jmgr_He3);
-  Utilities::KinConf kin_pim = Utilities::LoadKinConfig(jmgr_pim);
-  analyzed_tree *T_data = Utilities::LoadAnalyzedRootFiles(kin_He3,1,1);
-  analyzed_tree *T_sim_He3 = Utilities::LoadAnalyzedRootFiles(kin_He3,0,1);
-  analyzed_tree *T_sim_pim = Utilities::LoadAnalyzedRootFiles(kin_pim,0,1);
+  double PS_cut = 0.2; //GeV
+
+  TString jmgr_He3 = "../../config/" + cfg + "_He3.cfg";
+  TString jmgr_pim = "../../config/" + cfg + "_pim_sim.cfg";
+  Utilities::KinConf kin_He3 = Utilities::LoadKinConfig(jmgr_He3,1);
+  Utilities::KinConf kin_pim = Utilities::LoadKinConfig(jmgr_pim,0);
+  analyzed_tree *T_data = Utilities::LoadAnalyzedRootFiles(kin_He3,1,0);
+  analyzed_tree *T_sim_He3 = Utilities::LoadAnalyzedRootFiles(kin_He3,0,0);
+  analyzed_tree *T_sim_pim = Utilities::LoadAnalyzedRootFiles(kin_pim,0,0);
+
+  int IHWP_Flip = kin_He3.IHWP_Flip;
+  double W2min = kin_He3.W2min;
+  double W2max = kin_He3.W2max;
+
+  double dy_bg_min = kin_He3.dymin;
+  double dy_bg_max = kin_He3.dymax;
+  vector<double> dx_n = kin_He3.dx_n;
+  double Nsigma_dx_n = kin_He3.Nsigma_dx_n;
+  vector<double> dy_n = kin_He3.dy_n;
+  double Nsigma_dy_n = kin_He3.Nsigma_dy_n;
+  double dxmin = dx_n[0] - dx_n[1];
+  double dxmax = dx_n[0] + dx_n[1];
+  double dymin = dy_n[0] - dy_n[1];
+  double dymax = dy_n[0] + dy_n[1];
+  double coin_min = kin_He3.coin_time_cut[0] - kin_He3.Nsigma_coin_time*kin_He3.coin_time_cut[1];
+  double coin_max = kin_He3.coin_time_cut[0] + kin_He3.Nsigma_coin_time*kin_He3.coin_time_cut[1];
+
+  double coin_bg_low = coin_max + 7*kin_He3.coin_time_cut[1];
+  double coin_bg_hi = coin_bg_low + 2*kin_He3.Nsigma_coin_time*kin_He3.coin_time_cut[1];
 
   
-  int nbins = 150;
-  double hxmin = 0;
-  double hxmax = 2;
 
-  TH1F *hpse_data = new TH1F("hpse_data","Pion Data vs Simulation;Preshower Energy (GeV);",nbins,hxmin,hxmax);
-  hpse_sim_He3 = new TH1F("hpse_sim_He3","",nbins,hxmin,hxmax);
-  hpse_sim_pim = new TH1F("hpse_sim_pim","",nbins,hxmin,hxmax);
-  TH1F *hpse_sim_tot = new TH1F("hpse_sim_tot","",nbins,hxmin,hxmax);
+  TH1F *hcoin_time_low = new TH1F("hcoin_time_low","Elastic Coincidence Time;Coincidence Time (ns);Entries",100,0,200);
+  TH1F *hcoin_time_hi = new TH1F("hcoin_time_hi","Elastic Coincidence Time;Coincidence Time (ns);Entries",100,0,200);
+  TH1F *hcoin_time_all = new TH1F("hcoin_time_all","Elastic Coincidence Time;Coincidence Time (ns);Entries",100,0,200);
+  TH1F *hpse_bad_coin = new TH1F("hpse_bad_coin","",nbins,hxmin,hxmax);
+
+  TH1F *hpse_low = new TH1F("hpse_low","",nbins,hxmin,hxmax);
+  TH1F *hpse_hi = new TH1F("hpse_hi",cfg + " He3 Simulation Preshower;Preshower Energy (GeV);",nbins,hxmin,hxmax);
+  TH1F *hpse_pim_low = new TH1F("hpse_pim_low","",nbins,hxmin,hxmax);
+  TH1F *hpse_pim_hi = new TH1F("hpse_pim_hi",cfg + " #pi^{-} Simulation Preshower;Preshower Energy (GeV);",nbins,hxmin,hxmax);
+
+
+  TH1F *hpse_data = new TH1F("hpse_data",cfg + " Preshower Energy;Energy (GeV);",nbins,hxmin,hxmax);
+  TH1F *hpse_data_p = new TH1F("hpse_data_p",cfg + " Preshower Energy, +1 Helicity;Energy (GeV);",nbins,hxmin,hxmax);
+  TH1F *hpse_data_m = new TH1F("hpse_data_m",cfg + " Preshower Energy, -1 Helicity;Energy (GeV);",nbins,hxmin,hxmax);
+
+  TH1F *hpse_data_inel = new TH1F("hpse_data_inel",cfg + " Preshower Energy;Energy (GeV);",nbins,hxmin,hxmax);
+  TH1F *hpse_data_inel_p = new TH1F("hpse_data_p_inel",cfg + " Preshower Energy, +1 Helicity;Energy (GeV);",nbins,hxmin,hxmax);
+  TH1F *hpse_data_inel_m = new TH1F("hpse_data_m_inel",cfg + " Preshower Energy, -1 Helicity;Energy (GeV);",nbins,hxmin,hxmax);
+
+  hpse_pi = new TH1F("hpse_pi","",nbins,hxmin,hxmax);
+  hpse_e = new TH1F("hpse_e",cfg + " Preshower Energy;Energy (GeV);",nbins,hxmin,hxmax);
+
+
+  int nevent = 0;
+  int N_QE = 0;
+  int N_acc = 0;
+  int maxevent = T_data->fChain->GetEntries(); // Used to loop through the tree
   
-  TCut simNCut = "(ePS > 0.01 && WCut && fnucl == 0)*weight";
-  TCut simPiCut = "(ePS > 0.01 && WCut)*weight";
+  while(nevent < maxevent){
+    T_data->GetEntry(nevent++);  //Get data for one event
+
+    bool good_PS = T_data->ePS>0.001;
+    bool good_hel = DBInfo.GoodHel[T_data->runnum] && (T_data->helicity == -1 || T_data->helicity == 1);
+    bool good_W2 = T_data->W2 > W2min && T_data->W2 < W2max;
+    bool good_dy_elas = T_data->dy > dymin && T_data->dy < dymax;
+    bool good_dx_elas = T_data->dx > dxmin && T_data->dx < dxmax;
+    bool dy_bg_cut = T_data->dy < dy_bg_min || T_data->dy > dy_bg_max;
+    bool good_coin_time = T_data->coin_time > coin_min && T_data->coin_time < coin_max;
+    bool bad_coin_time = T_data->coin_time > coin_bg_low && T_data->coin_time < coin_bg_hi;
+
+    int helicity = T_data->helicity;
+    helicity *= -1*T_data->IHWP*IHWP_Flip; 
+
+    if(!good_PS || !good_hel) continue;
+
+    if(good_coin_time && good_dx_elas && dy_bg_cut){
+      if(helicity == 1)      
+	hpse_data_inel_p->Fill(T_data->ePS);    
+      if(helicity == -1)      
+	hpse_data_inel_m->Fill(T_data->ePS);
+    }
+    
+    if(!good_W2) continue;
+
+    if(helicity == 1)
+      hpse_data_p->Fill(T_data->ePS);
+    if(helicity == -1)
+      hpse_data_m->Fill(T_data->ePS);
+    
+    if(good_coin_time && good_dx_elas && dy_bg_cut)
+      hpse_data_inel->Fill(T_data->ePS);       
+    
+    if(good_dx_elas && good_dy_elas){
+      if(good_coin_time) hpse_data->Fill(T_data->ePS);
+      if(bad_coin_time) hpse_bad_coin->Fill(T_data->ePS);
+      if(T_data->ePS < PS_cut) hcoin_time_low->Fill(T_data->coin_time);
+      if(T_data->ePS > PS_cut) hcoin_time_hi->Fill(T_data->coin_time);
+      hcoin_time_all->Fill(T_data->coin_time);
+      N_QE++;
+      if(bad_coin_time) N_acc++;
+    }
+    
+    }
+
+    TCut simCut = Form("(ePS > 0.01 && W2 > %g && W2 < %g)*weight",W2min,W2max);
+    TCut hiPSCut = "(ePS > 0.01 && trP > 2.7)*weight";
+    TCut lowPSCut = "(ePS > 0.01 && trP < 2.7)*weight";
+
+    // Plots for PS dist with differrent momentum cuts
+    T_sim_He3->fChain->Draw("ePS>>hpse_low",lowPSCut);
+    T_sim_He3->fChain->Draw("ePS>>hpse_hi",hiPSCut);
+    T_sim_pim->fChain->Draw("ePS>>hpse_pim_low",lowPSCut);
+    T_sim_pim->fChain->Draw("ePS>>hpse_pim_hi",hiPSCut);
+
+    T_sim_pim->fChain->Draw("ePS>>hpse_pi",simCut);
+    T_sim_He3->fChain->Draw("ePS>>hpse_e",simCut);
+
+    double scale_pi = 1.0/hpse_pi->Integral();
+    double scale_e = 1.0/hpse_e->Integral();
+
+    hpse_pi->Scale(scale_pi);
+    hpse_e->Scale(scale_e);
+    hpse_hi->Scale(1.0 / hpse_hi->Integral());
+    hpse_low->Scale(1.0 / hpse_low->Integral());
+    hpse_pim_hi->Scale(1.0 / hpse_pim_hi->Integral());
+    hpse_pim_low->Scale(1.0 / hpse_pim_low->Integral());
+
+    double f_acc = 1.0*N_acc / N_QE;
+    double f_acc_err = CalcFractionErr(N_acc, N_QE);
+    acc_scale = 1.0 - f_acc;
+
+    TH1F *hsub = (TH1F*)hpse_data->Clone("hsub");
+    hsub->Add(hpse_bad_coin,-1);  
+
+    ShowerHists fit_p, fit_m, fit_all, fit_inel_p, fit_inel_m, fit_all_inel;
+    fit_p.hdata = hpse_data_p;
+    fit_p.Type = "p";
+    fit_m.hdata = hpse_data_m;
+    fit_m.Type = "m";
+    fit_all.hdata = hpse_data;
+    fit_all.Type = "all";
+    fit_all_inel.hdata = hpse_data_inel;
+    fit_all_inel.Type = "all_inel";
+    fit_inel_p.hdata = hpse_data_inel_p;
+    fit_inel_p.Type = "p_inel";
+    fit_inel_m.hdata = hpse_data_inel_m;
+    fit_inel_m.Type = "m_inel";
+
+    dofitting(fit_p);
+    dofitting(fit_m);
+    dofitting(fit_all);
+    dofitting(fit_all_inel);
+    dofitting(fit_inel_p);
+    dofitting(fit_inel_m);
+
+    TCanvas *c1 = new TCanvas("c1","",1600,600);
+    c1->Divide(2,1);
+
+    c1->cd(1);
+    hpse_hi->SetLineColor(kRed);
+    hpse_hi->Draw("hist");
+    hpse_low->Draw("same hist");
+
+    TLegend *legend = new TLegend(0.65,0.72,0.89,0.89);
+    legend->AddEntry("hpse_hi","Track p > 2.7 GeV","l");
+    legend->AddEntry("hpse_low","Track p < 2.7 GeV","l");
+    legend->SetLineColor(0);
+    legend->Draw("same");
+
+    c1->cd(2);
+    hpse_pim_hi->SetLineColor(kRed);
+    hpse_pim_hi->Draw("hist");
+    hpse_pim_low->Draw("same hist");
+
   
-  T_data->fChain->Draw("ePS>>hpse_data","coinCut && WCut && nCut");
-  T_sim_He3->fChain->Draw("ePS>>hpse_sim_He3",simNCut);
-  T_sim_pim->fChain->Draw("ePS>>hpse_sim_pim",simPiCut);
-
-  double scale_data = 1.0/hpse_data->Integral();
-  double scale_He3 = 1.0/hpse_sim_He3->Integral();
-  double scale_pim = 1.0/hpse_sim_pim->Integral();
-
-  hpse_data->Scale(scale_data);
-  hpse_sim_He3->Scale(scale_He3);
-  hpse_sim_pim->Scale(scale_pim);
-
-  //Set fit to function fitsim
-  TF1 *FitFunc = new TF1( "FitFunc", fitdist,hxmin,hxmax,4);
-
-  //Set some arbitrary starting values, should not be hardcoding this
-  FitFunc->SetNpx(1000);
-  double startpar[] = {1.0,1.0,1.0,1.0};
-  FitFunc->SetParameters(startpar);
-  FitFunc->SetParLimits(0,0.01,1);
-  FitFunc->SetParLimits(1,0.01,1);
-  FitFunc->SetParLimits(2,0.01,1);
-  FitFunc->SetParLimits(3,0.01,1);
-
-  hpse_data->Fit(FitFunc,"0","",hxmin,hxmax);
-
-  FitFunc->SetParameter(0,0.92);
-  FitFunc->SetParameter(1,0);
-  FitFunc->SetParameter(2,0.86);
-  FitFunc->SetParameter(3,1);
-
-  hpse_sim_He3->Reset();
-  hpse_sim_pim->Reset();
-
-  T_sim_He3->fChain->Draw(Form("%g*ePS>>hpse_sim_He3",FitFunc->GetParameter(2)),simNCut);
-  T_sim_pim->fChain->Draw(Form("%g*ePS>>hpse_sim_pim",FitFunc->GetParameter(3)),simPiCut);
+    TCanvas *c2 = new TCanvas("c2","",1600,600);
+    c2->Divide(2,1);
   
-  hpse_data->Scale(1.0/scale_data);
-  hpse_sim_He3->Scale(scale_He3*FitFunc->GetParameter(0)/scale_data);
-  hpse_sim_pim->Scale(scale_pim*FitFunc->GetParameter(1)/scale_data);
-
-  for(int ibin = 0; ibin < nbins;ibin++){
-    hpse_sim_tot->SetBinContent(ibin,hpse_sim_He3->GetBinContent(ibin) + hpse_sim_pim->GetBinContent(ibin));
-  }
-
-  hpse_sim_He3->SetLineColor(kRed);
-  hpse_sim_pim->SetLineColor(kGreen);
-  hpse_sim_tot->SetLineColor(kMagenta);
-
-  TCanvas *c = new TCanvas("c","",800,600);
-  hpse_data->Draw("hist");
-  hpse_sim_pim->Draw("same hist");    
-  hpse_sim_He3->Draw("same hist");
-  //hpse_sim_tot->Draw("same hist");
+    c2->cd(1);
+    fit_p.hdata->Draw();
+    fit_p.hpi_final->Draw("same hist");
+    fit_p.he_final->Draw("same hist");
+    fit_p.htotal_final->Draw("same hist");
   
-  TLegend *legend = new TLegend(0.65,0.72,0.89,0.89);
-  legend->AddEntry("hpse_data","He3 Data","l");
-  legend->AddEntry("hpse_sim_He3","QE He3 Sim","l");
-  legend->AddEntry("hpse_sim_pim","#pi^{-} Sim","l");
-  legend->AddEntry("hpse_sim_tot","Sim Total","l");
-  legend->SetLineColor(0);
-  legend->Draw("same");
- 
+    TLegend *legend2 = new TLegend(0.59,0.65,0.89,0.89);
+    legend2->AddEntry(fit_p.hdata->GetName(),"He3 Data","p");
+    legend2->AddEntry(fit_p.htotal_final->GetName(),"Total Fit","l");
+    legend2->AddEntry(fit_p.hpi_final->GetName(),"#pi^{-} Simulation","l");
+    legend2->AddEntry(fit_p.he_final->GetName(),"e^{-} Simulation","l");
+    legend2->SetLineColor(0);
+    legend2->Draw("same");
+
+    TPaveText *pt = new TPaveText(.65,.55,.88,.64,"ndc");
+    pt->AddText("Cuts on good tracks");
+    pt->AddText(Form("%g < W^{2} < %g",W2min,W2max)); 
+    pt->SetFillColor(0);
+    pt->Draw("same");
+
+    c2->cd(2);
+    fit_m.hdata->Draw();
+    fit_m.hpi_final->Draw("same hist");
+    fit_m.he_final->Draw("same hist");
+    fit_m.htotal_final->Draw("same hist");
+    
+    TCanvas *c6 = new TCanvas("c6","",1600,600);
+    c6->Divide(2,1);
+    //hcoin_time_all->Scale(1.0/hcoin_time_all->Integral());
+    //hcoin_time_low->Scale(1.0/hcoin_time_low->Integral());
+    //hcoin_time_hi->Scale(1.0/hcoin_time_hi->Integral());
+
+    c6->cd(1);
+    hcoin_time_low->SetLineColor(kRed);
+    hcoin_time_hi->SetLineColor(kGreen);
+    hcoin_time_all->Draw("hist");
+    //hcoin_time_all->Draw("hist same");
+    //hcoin_time_low->Draw("hist same");
+    Utilities::DrawLines(c6->cd(1), coin_bg_low, coin_bg_hi, kBlue);
+    TBox *box_blue = Utilities::DrawBox(c6->cd(1), coin_bg_low, coin_bg_hi, kBlue);
+
+    TLegend *legend61 = new TLegend(0.550,0.773,0.89,0.89);
+    legend61->AddEntry(box_blue,"Accidental Fraction","f");
+    legend61->SetLineColor(0);
+    legend61->Draw("same");
+
+    c6->cd(2);
+    hpse_data->Draw("hist");
+    hpse_bad_coin->SetLineColor(kRed);
+    hpse_bad_coin->Draw("same");
+
+    TLegend *legend62 = new TLegend(0.564,0.774,0.89,0.89);
+    legend62->AddEntry(hpse_data,"Good Coin Cut","l");
+    legend62->AddEntry(hpse_bad_coin,"Bad Coin Cut","l");
+    legend62->SetLineColor(0);
+    legend62->Draw("same");
+
+    TCanvas *c3 = new TCanvas("c3","",800,600);
+    fit_all.hdata->Draw();
+    fit_all.hpi_final->Draw("same hist");
+    fit_all.he_final->Draw("same hist");
+    fit_all.htotal_final->Draw("same hist");
+
+    legend2->Draw("same");
+
+    TPaveText *pt2 = new TPaveText(.65,.55,.88,.64,"ndc");
+    pt2->AddText("All QE Cuts");
+    pt2->SetFillColor(0);
+    pt2->Draw("same");
+  
+
+    TCanvas *c4 = new TCanvas("c4","",1600,600);
+    c4->Divide(2,1);
+
+    c4->cd(1);
+    fit_inel_p.hdata->Draw();
+    fit_inel_p.hpi_final->Draw("same hist");
+    fit_inel_p.he_final->Draw("same hist");
+    fit_inel_p.htotal_final->Draw("same hist");
+
+    c4->cd(2);
+    fit_inel_m.hdata->Draw();
+    fit_inel_m.hpi_final->Draw("same hist");
+    fit_inel_m.he_final->Draw("same hist");
+    fit_inel_m.htotal_final->Draw("same hist");
+  
+    TCanvas *c5 = new TCanvas("c5","",800,600);
+    fit_all_inel.hdata->Draw();
+    fit_all_inel.hpi_final->Draw("same hist");
+    fit_all_inel.he_final->Draw("same hist");
+    fit_all_inel.htotal_final->Draw("same hist");
+  
+
+
+    double N_pi_p = GetYield(fit_p.hpi_final,0,PS_cut);
+    double N_pi_m = GetYield(fit_m.hpi_final,0,PS_cut);
+
+    double N_data_all = GetYield(fit_all.hdata,PS_cut,hxmax);
+    double N_pi_all = GetYield(fit_all.hpi_final,PS_cut,hxmax);
+
+    double N_pi_p_inel = GetYield(fit_inel_p.hpi_final,0,PS_cut);
+    double N_pi_m_inel = GetYield(fit_inel_m.hpi_final,0,PS_cut);
+
+    double N_data_all_inel = GetYield(fit_all_inel.hdata,PS_cut,hxmax);
+    double N_pi_all_inel = GetYield(fit_all_inel.hpi_final,PS_cut,hxmax);
+    
+    double A = (N_pi_p - N_pi_m) / (N_pi_p + N_pi_m);
+    double F = (N_pi_all) / (N_data_all);
+    
+    double Aerr = sqrt(pow(CalcAsymErr(N_pi_p,N_pi_m),2) + f_acc_err*f_acc_err);
+    double Ferr = sqrt(pow(CalcFractionErr(N_pi_all, N_data_all),2) +  + f_acc_err*f_acc_err);
+
+    cout<<"Pion Asymmetry = "<<A<<"  Aerr = "<<Aerr<<endl;
+    cout<<"Pion Fraciton = "<<F<<"  Ferr = "<<Ferr<<endl;
+      
+  
+    TString plot_dir = "../../plots/";
+    TString plot_name = "Pion_cont_" + cfg + ".pdf";
+
+    TString outputfile = plot_dir + plot_name;
+
+    c1->Print(outputfile + "(");
+    c6->Print(outputfile);        
+    c2->Print(outputfile);
+    c3->Print(outputfile + ")");
+    //c4->Print(outputfile);
+    //c5->Print(outputfile + ")");    
+    
+
 }
 
 

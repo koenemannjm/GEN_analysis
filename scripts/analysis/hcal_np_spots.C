@@ -200,65 +200,117 @@ void get_np_spots(TCanvas *c, TString cfg, TH2D *hdxdy,TString config, TF1 **fit
 
 
 
-void hcal_np_spots(TString cfg = "GEN2", TString type = "data"){
+void hcal_np_spots(TString cfg = "GEN2", bool is_data = 1){
 
   kinematic = cfg;
 
-  //Read the He3 run and H2 run files
-  TFile *H2_file = new TFile("../outfiles/QE_" + type + "_" + cfg + "_sbs100p_nucleon_p_model1.root","read");
-  TFile *He3_file = new TFile("../outfiles/QE_" + type + "_" + cfg + "_sbs100p_nucleon_np_model2.root","read");
+  TString jmgr_He3 = "../../config/" + cfg + "_He3.cfg";
+  TString jmgr_H2 = "../../config/" + cfg + "_H2.cfg";
+  if(cfg == "GEN2") jmgr_H2 = "../../config/" + cfg + "_H2_SBS100.cfg";  
+  if(cfg == "GEN4") jmgr_H2 = "../../config/" + cfg + "b_H2.cfg";  
+
+  Utilities::KinConf kin_He3 = Utilities::LoadKinConfig(jmgr_He3,is_data);
+  Utilities::KinConf kin_H2 = Utilities::LoadKinConfig(jmgr_H2,is_data);
+
+  analyzed_tree *T_He3 = Utilities::LoadAnalyzedRootFiles(kin_He3,is_data,1);
+  analyzed_tree *T_H2 = Utilities::LoadAnalyzedRootFiles(kin_H2,is_data,1);
   
-  // reading input config file ---------------------------------------
-  //TString jmgr_file = "../../config/" + cfg + "_H2.cfg";  
-  TString jmgr_file = "../../config/" + cfg + "_He3.cfg";  
-  if(cfg == "GEN2") jmgr_file = "../../config/" + cfg + "_H2_SBS100.cfg";  
-  if(type == "sim") jmgr_file = "../../config/" + cfg + "_H2_" + type + ".cfg";
-  JSONManager *jmgr = new JSONManager(jmgr_file);
-
   // elastic cut limits
-  W2min = 0.48;
-  W2max = 1.28;
+  W2min = kin_He3.W2min;
+  W2max = kin_He3.W2max;
 
+  //Cuts for H2 spot
+  vector<double> dx_n = kin_H2.dx_n;
+  double Nsigma_dx_n = kin_H2.Nsigma_dx_n;
+  vector<double> dy_n = kin_H2.dy_n;
+  double Nsigma_dy_n = kin_H2.Nsigma_dy_n;
+  double dxmin_H2 = dx_n[0] - dx_n[1];
+  double dxmax_H2 = dx_n[0] + dx_n[1];
+  double dymin_H2 = dy_n[0] - dy_n[1];
+  double dymax_H2 = dy_n[0] + dy_n[1];
 
-   ////////////////////// ~~~~~~~~First analyze the H2 file~~~~~~~~  //////////////////////
-  TTree *T = (TTree*)H2_file->Get("Tout");
+  double coin_min_H2 = kin_H2.coin_time_cut[0] - kin_H2.Nsigma_coin_time*kin_H2.coin_time_cut[1];
+  double coin_max_H2 = kin_H2.coin_time_cut[0] + kin_H2.Nsigma_coin_time*kin_H2.coin_time_cut[1];
+
+  // Cuts for He3 spot
+  dx_n = kin_He3.dx_n;
+  Nsigma_dx_n = kin_He3.Nsigma_dx_n;
+  dy_n = kin_He3.dy_n;
+  Nsigma_dy_n = kin_He3.Nsigma_dy_n;
+  double dxmin_He3 = dx_n[0] - dx_n[1];
+  double dxmax_He3 = dx_n[0] + dx_n[1];
+  double dymin_He3 = dy_n[0] - dy_n[1];
+  double dymax_He3 = dy_n[0] + dy_n[1];
+
+  double coin_min_He3 = kin_He3.coin_time_cut[0] - kin_He3.Nsigma_coin_time*kin_He3.coin_time_cut[1];
+  double coin_max_He3 = kin_He3.coin_time_cut[0] + kin_He3.Nsigma_coin_time*kin_He3.coin_time_cut[1];
+
 
   //Set the histograms that will be filled
   TH2D *hdxdy_nocut_H2 = new TH2D("hdxdy_nocut_H2","",150,-2,2,150,-6,6);
-  TH2D *hdxdy_W2cut_H2 = new TH2D("hdxdy_W2cut_H2","",150,-2,2,150,-6,6);
+  TH2D *hdxdy_Wcut_H2 = new TH2D("hdxdy_Wcut_H2","",150,-2,2,150,-6,6);
   TH2D *hdxdy_coin_H2 = new TH2D("hdxdy_coin_H2","",150,-2,2,150,-6,6);
   TH1D *hW2_all_H2 = new TH1D("hW2_all_H2","",200,0,4);
   TH1D *hW2_cut_H2 = new TH1D("hW2_cut_H2","",200,0,4);
-  
-  //Fill histograms directly from the tree using Draw funcitons
-  T->Draw("W2>>hW2_cut_H2","pCut");
-  T->Draw("W2>>hW2_all_H2");
-  T->Draw("dx:dy>>hdxdy_nocut_H2");
-  T->Draw("dx:dy>>hdxdy_W2cut_H2",Form("W2 > %g && W2 < %g",W2min,W2max));
-  if(type == "sim") T->Draw("dx:dy>>hdxdy_coin_H2",Form("W2 > %g && W2 < %g",W2min,W2max));
-  else T->Draw("dx:dy>>hdxdy_coin_H2",Form("coinCut &&  W2 > %g && W2 < %g",W2min,W2max));
-  
 
-   ////////////////////// ~~~~~~~~Delete tree and now switch to He3 file~~~~~~~~  //////////////////////
-  T->Delete();
-
-  T = (TTree*)He3_file->Get("Tout");
-  
-  //Set histograms to be filled
   TH2D *hdxdy_nocut_He3 = new TH2D("hdxdy_nocut_He3","",150,-2,2,150,-6,6);
   TH2D *hdxdy_Wcut_He3 = new TH2D("hdxdy_Wcut_He3","",150,-2,2,150,-6,6);
-  TH2D *hdxdy_coin_He3 = new TH2D("hdxdy_coin_He3","",150,-2,2,150,-6,6);
+  TH2D *hdxdy_coin_He3 = new TH2D("hdxdy_coin_He3","",150,-2,2,150,-4,2.5);
   TH1D *hW2_all_He3 = new TH1D("hW2_all_He3","",200,0,4);
-  TH1D *hW2_cut_He3 = new TH1D("hW2_cut_He3","",200,0,4);
+  TH1D *hW2_cut_He3 = new TH1D("hW2_cut_He3","",200,0,4);  
+  ////////////////////////////////////////////////////////////////
 
-  
-  //Fill histograms same as above for H2
-  T->Draw("W2>>hW2_cut_He3","(pCut || nCut) && coinCut");
-  T->Draw("W2>>hW2_all_He3");
-  T->Draw("dx:dy>>hdxdy_nocut_He3");
-  T->Draw("dx:dy>>hdxdy_Wcut_He3",Form("W2 > %g && W2 < %g",W2min,W2max));
-  T->Draw("dx:dy>>hdxdy_coin_He3",Form("coinCut && W2 > %g && W2 < %g",W2min,W2max));
-  
+  int nevent = 0;
+  int maxevent = T_H2->fChain->GetEntries();
+
+  while(nevent < maxevent){
+    T_H2->GetEntry(nevent++);   
+
+    ////// Define all the cuts we will use on the data  ////////////////
+    bool good_W2 = T_H2->W2 > W2min && T_H2->W2 < W2max;
+    bool good_coin_time = T_H2->coin_time > coin_min_H2 && T_H2->coin_time < coin_max_H2;
+    bool good_dy_elas = T_H2->dy > dymin_H2 && T_H2->dy < dymax_H2;
+    bool good_dx_elas = T_H2->dx > dxmin_H2 && T_H2->dx < dxmax_H2;
+    //////////////////////////////////////////////////////////////////////
+
+    hW2_all_H2->Fill(T_H2->W2);
+    if(good_dy_elas && good_dx_elas) hW2_cut_H2->Fill(T_H2->W2);
+    hdxdy_nocut_H2->Fill(T_H2->dy,T_H2->dx);
+    if(good_W2) hdxdy_Wcut_H2->Fill(T_H2->dy,T_H2->dx);
+    if(!is_data){
+      if(good_W2) hdxdy_coin_H2->Fill(T_H2->dy,T_H2->dx);
+    } 
+    else {
+      if(good_W2 && good_coin_time) hdxdy_coin_H2->Fill(T_H2->dy,T_H2->dx);
+    }
+
+  }
+
+  nevent = 0;
+  maxevent = T_He3->fChain->GetEntries();
+
+  while(nevent < maxevent){
+    T_He3->GetEntry(nevent++);   
+
+    ////// Define all the cuts we will use on the data  ////////////////
+    bool good_W2 = T_He3->W2 > W2min && T_He3->W2 < W2max;
+    bool good_coin_time = T_He3->coin_time > coin_min_He3 && T_He3->coin_time < coin_max_He3;
+    bool good_dy_elas = T_He3->dy > dymin_He3 && T_He3->dy < dymax_He3;
+    bool good_dx_elas = T_He3->dx > dxmin_He3 && T_He3->dx < dxmax_He3;
+    //////////////////////////////////////////////////////////////////////
+
+    hW2_all_He3->Fill(T_He3->W2);
+    if(good_dy_elas && good_dx_elas) hW2_cut_He3->Fill(T_He3->W2);
+    hdxdy_nocut_He3->Fill(T_He3->dy,T_He3->dx);
+    if(good_W2) hdxdy_Wcut_He3->Fill(T_He3->dy,T_He3->dx);
+    if(!is_data){
+      if(good_W2) hdxdy_coin_He3->Fill(T_He3->dy,T_He3->dx);
+    } 
+    else {
+      if(good_W2 && good_coin_time) hdxdy_coin_He3->Fill(T_He3->dy,T_He3->dx);
+    }
+
+  }
   
  
   ////////////////////// ~~~~~~~Plot the results~~~~~~~~  //////////////////////
@@ -274,7 +326,7 @@ void hcal_np_spots(TString cfg = "GEN2", TString type = "data"){
   TH1D *hdx_nocut_He3 = hdxdy_nocut_He3->ProjectionY("hdx_nocut_He3");
   TH1D *hdx_Wcut_He3 = hdxdy_Wcut_He3->ProjectionY("hdx_Wcut_He3");
   TH1D *hdx_coin_He3 = hdxdy_coin_He3->ProjectionY("hdx_coin_He3");
-  TH1D *hdy_coin_He3 = hdxdy_coin_He3->ProjectionX("hdy_coin_He3");
+  TH1D *hdy_coin_He3 = hdxdy_coin_He3->ProjectionX("hdy_coin_He3",hdxdy_coin_He3->GetYaxis()->FindBin(dxmin_He3), -1);
   TH1D *hdx_coin_H2 = hdxdy_coin_H2->ProjectionY("hdx_coin_H2");
   TH1D *hdy_coin_H2 = hdxdy_coin_H2->ProjectionX("hdy_coin_H2");
   

@@ -3,12 +3,10 @@
 #include "../include/Analysis.h"
 
 
-// This script calculates the coefficients for GE/GM extraction.
-// The formalism here is taken from Seamus/Freddy's thesis. It is a 
-// fifth order taylor expansion around GE/GM for the asymmetry
-void UpdateExpansionCoefficients(analyzed_tree *T){
+// This script calculates the variables for GE/GM extraction.
+void UpdateAverageKinematics(analyzed_tree *T){
  
-  SetHe3Pol();  // Sets the He3 polarization value/direction
+  SetHe3PolAngle();  // Sets the He3 polarization value/direction
 
   TLorentzVector Pe(0,0,T->ebeam,T->ebeam);   // incoming e-
   TLorentzVector Peprime(T->trPx,   // scattered e-
@@ -25,43 +23,52 @@ void UpdateExpansionCoefficients(analyzed_tree *T){
   normal = normal.Unit();
   q_vect = q_vect.Unit();
   
-
+  // Get our kinematics for the event
   double m = constant::Mp;
   double tau = T->Q2 / (4 * m * m);   // Defenition of tau
+  double tan_theta = tan(T->etheta/2);
+  double epsilon = 1.0 / (1 + 2*(1 + tau)*pow(tan_theta,2)); // Defenition
 
   // These two give the polarization components 
-  double P_x = normal.Dot(q_vect.Cross(TargetPolDirection)); 
-  double P_z = q_vect.Dot(TargetPolDirection);
-  
-  // These variables are the expansion 
-  double B = -2 * sqrt( tau * (1 + tau) ) * tan(T->etheta/2) * P_x;
-  double C = -2 * tau * sqrt(1 + tau + pow((1 + tau) * tan(T->etheta/2),2) ) * tan(T->etheta/2) * P_z; 
-  double D = tau + 2*tau * (1 + tau) * pow(tan(T->etheta/2),2);
+  double Px = normal.Dot(q_vect.Cross(TargetPolDirection)); 
+  double Pz = q_vect.Dot(TargetPolDirection);
+
+  // These variables are for fifth order Taylor expansion
+  double B = -2 * sqrt( tau * (1 + tau) ) * tan_theta * Px;
+  double C = -2 * tau * sqrt(1 + tau + pow((1 + tau) * tan_theta,2) ) * tan_theta * Pz; 
+  double D = tau / epsilon;
 
   double T_0 = C / D;
   double T_1 = B / D;
-  double T_2 = -C / (D*D);
-  double T_3 = -B / (D*D);
+  double T_2 = -1*C / (D*D);
+  double T_3 = -1*B / (D*D);
   double T_4 = C / (D*D*D);
   double T_5 = B / (D*D*D);
 
   // Now we update the average for each value
-  count_avg++;
-  T_avg[0] += (T_0 - T_avg[0]) / count_avg;
-  T_avg[1] += (T_1 - T_avg[1]) / count_avg;
-  T_avg[2] += (T_2 - T_avg[2]) / count_avg;
-  T_avg[3] += (T_3 - T_avg[3]) / count_avg;
-  T_avg[4] += (T_4 - T_avg[4]) / count_avg;
-  T_avg[5] += (T_5 - T_avg[5]) / count_avg;
-  T_1_Q2_avg += (T_1*T->Q2 - T_1_Q2_avg) / count_avg;
-  Q2_avg = T_1_Q2_avg / T_avg[1];
+  count_avg_exp++;
+  T_avg[0] += (T_0 - T_avg[0]) / count_avg_exp;
+  T_avg[1] += (T_1 - T_avg[1]) / count_avg_exp;
+  T_avg[2] += (T_2 - T_avg[2]) / count_avg_exp;
+  T_avg[3] += (T_3 - T_avg[3]) / count_avg_exp;
+  T_avg[4] += (T_4 - T_avg[4]) / count_avg_exp;
+  T_avg[5] += (T_5 - T_avg[5]) / count_avg_exp;
+  T_1_Q2_avg += (T_1*T->Q2 - T_1_Q2_avg) / count_avg_exp;
+  //Q2_avg = T_1_Q2_avg / T_avg[1];
+
+  // We also get the average kinematic variables for later
+  Q2_avg += (T->Q2 - Q2_avg) / count_avg_exp;
+  tau_avg += (tau - tau_avg) / count_avg_exp;
+  epsilon_avg += (epsilon - epsilon_avg) / count_avg_exp;
+  Px_avg += (Px - Px_avg) / count_avg_exp;
+  Pz_avg += (Pz - Pz_avg) / count_avg_exp;
 
 }
 
 
-// This gets the GE/GM value from parameterizations
+// This gets the GE/GM value from parameterizations from a Q2 value
 // This can be found in literature or Seamus/Freddy's theses 
-double GetGEGM(bool is_neutron, double Q2){
+double GetGEGMFromTheory(bool is_neutron, double Q2){
 
   double m = constant::Mp;
   double tau = Q2 / (4 * m * m);
@@ -84,6 +91,104 @@ double GetGEGM(bool is_neutron, double Q2){
   return GE / GM;
 }
 
+// Given the average kinematic values get the asymmetry from this Q2 value
+// by following the GE/GM parameterizations
+double GetAFromQ2(bool is_neutron, double Q2){
+
+  if(epsilon_avg == 0 || tau_avg == 0){
+    cout<<"Error: [Analysis::GetAFromQ2] epsilon and tau values have not been set!!!"<<endl;
+    exit(0);
+  }
+
+  double R = GetGEGMFromTheory(is_neutron, Q2); // Get GE/GM from parameterization
+  double e = epsilon_avg;
+  double t = tau_avg;
+  
+  // This is the calculation for A
+  double num = -1*sqrt(2*e*(1-e)/t)*Px_avg*R - sqrt(1 - e*e)*Pz_avg;
+  double den = 1 + e / t * R*R;
+
+  return num / den;
+}
+
+// From the average kinematic values and the asymmetry measurement calculate
+// GE/GM
+double GetGEGMFromA(double A_phys, double A_stat_err, double A_sys_err){
+
+  if(epsilon_avg == 0 || tau_avg == 0){
+    cout<<"Error: [Analysis::GetGEGMFromA] epsilon and tau values have not been set!!!"<<endl;
+    exit(0);
+  }
+  
+  double e = epsilon_avg;
+  double t = tau_avg;
+
+  double A = e / t * A_phys;
+  double B = Px_avg*sqrt(2*e*(1 - e) / t);
+  double C = A_phys + Pz_avg*sqrt(1 - e*e);
+
+  // We are solving the quadratic equation to get GE/GM
+  double R1 = (-B + sqrt(B*B - 4*A*C)) / (2*A);
+  double R2 = (-B - sqrt(B*B - 4*A*C)) / (2*A);
+  GEGM = R1;  // I think this root is correct
+  
+  // Now we calculate the error on the quadratic formula above
+  // See thesis for derivation of this calculation
+  GEGM_stat_err = sqrt( pow(-1*C / (A*sqrt(B*B - 4*A*C)) + (B - sqrt(B*B - 4*A*C)) / (2*A*A),2) * e*e/(t*t) + 1.0 / (B*B - 4*A*C) ) * A_stat_err;
+  GEGM_sys_err = sqrt( pow(-1*C / (A*sqrt(B*B - 4*A*C)) + (B - sqrt(B*B - 4*A*C)) / (2*A*A),2) * e*e/(t*t) + 1.0 / (B*B - 4*A*C) ) * A_sys_err;
+
+  return GEGM;
+}
+
+
+// Here we use Newtons method to find the 0 point of the asymmetry expansion
+void GetGEGMFromA_old(double A){
+
+  double gamma = (A - T_avg[0]) / T_avg[1];  //  Start with first order apporximation
+  int niter = 1000;
+  bool converge = false;
+
+  for(int inum = 0; inum < niter; inum++){
+    double fsum = 0;
+    double fderivsum = 0;
+    
+    for(int i=0; i < nexp; i++){
+      fsum += T_avg[i]*pow(gamma,i);
+      if(i > 0) fderivsum += i*T_avg[i]*pow(gamma,i-1);
+    }
+    
+    double f = A - fsum;
+    double fderiv = -1*fderivsum;
+    double gamma_old = gamma;
+    gamma = gamma_old - f / fderiv;
+    
+    converge = abs((gamma - gamma_old) / gamma) < 10e-6;
+    if(converge) break;
+  }
+
+  if(!converge){
+    cout<<"Error: [Analysis::GetGEGMFromA] Newtons method did not converge!!!"<<endl;
+    exit(0);
+  }
+
+  GEGM = gamma;   //Save the form factor result
+}
+
+
+// This function is used as a test to see what GE/GM we expect from A just from
+// the theory
+double GetAFromGEGM_theory(double GEGM,double etheta, double Q2){
+
+  double m = constant::Mp;
+  double tau = Q2 / (4 * m * m);
+
+  double num = -2 * GEGM * sqrt(tau*(tau + 1)) * tan(etheta/2);
+  double denom = GEGM*GEGM + tau + 2*tau*(tau + 1)*pow(tan(etheta/2),2);
+  double A = num / denom;
+
+  return A;
+}
+
 
 double distribution_fits::fitbg_pol4( double *x, double *par ){
   double dx = x[0];
@@ -103,6 +208,18 @@ double distribution_fits::fitbg_pol3( double *x, double *par ){
   // Let's use 3rd order polynomial for the background:
   double bg = 0.0;
   for( int i = 0; i<4; i++ ){
+    bg += par[i]*pow(dx,i);
+  }
+
+  return bg; 
+}
+
+double distribution_fits::fitbg_pol2( double *x, double *par ){
+  double dx = x[0];
+
+  // Let's use 3rd order polynomial for the background:
+  double bg = 0.0;
+  for( int i = 0; i<3; i++ ){
     bg += par[i]*pow(dx,i);
   }
 
@@ -133,6 +250,7 @@ double distribution_fits::fitsim( double *x, double *par){
   // Get the background function:
   if(bg_shape_option == "pol4") bg = fitbg_pol4(x,&par[3]);
   else if(bg_shape_option == "pol3") bg = fitbg_pol3(x,&par[3]);
+  else if(bg_shape_option == "pol2") bg = fitbg_pol2(x,&par[3]);
   else if(bg_shape_option == "gaus") bg = fitbg_gaus(x,&par[3]);
   else if(bg_shape_option == "from data") bg = hdx_bg_data->Interpolate(dx);
   
@@ -154,7 +272,7 @@ void distribution_fits::He3_fit_dists(){
     exit(0);
   }
   else {
-    if(bg_shape_option != "pol3" && bg_shape_option != "pol4" && bg_shape_option != "gaus" && bg_shape_option != "from data"){
+    if(bg_shape_option != "pol2" && bg_shape_option != "pol3" && bg_shape_option != "pol4" && bg_shape_option != "gaus" && bg_shape_option != "from data"){
       cout<<"Error: [distribution_fits::He3_sim_fit] bg shape option " + bg_shape_option + " is not supported!!!"<<endl;
       exit(0);
     }
@@ -196,6 +314,7 @@ void distribution_fits::He3_fit_dists(){
   int npar = -1;
   if(bg_shape_option == "pol4") npar = 3 + 5;
   else if(bg_shape_option == "pol3") npar = 3 + 4;
+  else if(bg_shape_option == "pol2") npar = 3 + 3;
   else if(bg_shape_option == "gaus") npar = 3 + 3;
   else if(bg_shape_option == "from data") npar = 3;  //Our only bg par is the scale of the bg
 
@@ -227,8 +346,10 @@ void distribution_fits::He3_fit_dists(){
     fit_bg = new TF1("fit_bg",this, &distribution_fits::fitbg_pol4,xmin,xmax,npar - 3);
   else if(bg_shape_option == "gaus") 
     fit_bg = new TF1("fit_bg",this, &distribution_fits::fitbg_gaus,xmin,xmax,npar - 3);
-  else
+  else if(bg_shape_option == "pol3")
     fit_bg = new TF1("fit_bg",this, &distribution_fits::fitbg_pol3,xmin,xmax,npar - 3);
+  else 
+    fit_bg = new TF1("fit_bg",this, &distribution_fits::fitbg_pol2,xmin,xmax,npar - 3);
 
   for(int i=0; i<npar - 3; i++)
     fit_bg->SetParameter(i,FitFunc->GetParameter(i+3));
@@ -259,79 +380,63 @@ void distribution_fits::He3_fit_dists(){
 }
 
 
-// This funciton is out dated. It used Seamus' method of dilutions which I am
-// no longer following
-void analyzed_info::CalcAsymValsOld(){
-
-  // Make sure all the variables have been loaded
-  if(N_raw_p == 0 && N_raw_m == 0){
-    cout<<"Error: [analyzed_info::CalcAsymVals] N_raw_p and N_raw_n are both zero!!!"<<endl;
-    exit(0);
-  }
-  if(N_bg_p == 0 && N_bg_m == 0){
-    cout<<"Error: [analyzed_info::CalcAsymVals] N_bg_p and N_bg_n are both zero!!!"<<endl;
-    exit(0);
-  }
-  if(N_proton == 0){
-    cout<<"Error: [analyzed_info::CalcAsymVals] N_proton has not been set!!!"<<endl;
-    exit(0);
-  }
- 
-  double N_N2 = 0.01;  //Currently set these but should be calcuated later
-  double N_ot = 0.01;  //Currently set these but should be calcuated later
-
-  // Get total numbers
-  double Sigma_raw = N_raw_p + N_raw_m;
-  double Sigma_bg =  N_bg_p + N_bg_m;
-  double Sigma_p =   N_proton;
-  double Sigma_N2 =  N_N2;
-  double Sigma_in =  N_in_p + N_in_m;
-  double Sigma_in_cont =  N_in_cont;
-
-  // Get differences in helicities
-  double Delta_raw = N_raw_p - N_raw_m;
-  double Delta_bg = N_bg_p - N_bg_m; 
-  double Delta_in = N_in_p - N_in_m; 
-
-  // Calculate the dilutions, formula's from Seamus' thesis
-  D_bg = 1 - Sigma_bg / Sigma_raw;
-  D_N2 = 1 - Sigma_N2 / (Sigma_raw - Sigma_bg);
-  D_p = 1 - Sigma_p / (Sigma_raw - Sigma_N2 - Sigma_bg);
-  D_in = 1 - Sigma_in_cont / (Sigma_raw - Sigma_p - Sigma_N2 - Sigma_bg);
+// This function sets the beam polarization for 
+void analyzed_info::SetPolBeam(int key, TDatime *evtime, vector<vector<TDatime*>> PolTime, vector<vector<double>> PolVal) {
   
-  // Calculate the asymmetry values
-  A_raw = Delta_raw / Sigma_raw;
-  A_bg = Delta_bg / Sigma_bg;
-  A_in = Delta_in / Sigma_in;
-
-  // Calculate proton asymmetry from the expansion
-  A_p = 0;
-  for(int i=0; i < nexp; i++)
-    A_p += T_avg[i] * pow(GetGEGM(0,Q2_avg),i);
-  
-  A_p *= (1 - D_p) / (D_bg*D_N2)*P_He3*P_beam*P_p;
-  
-  // Calculate the total physics asymmetry
-  double denom = P_He3 * P_n * P_beam * D_bg * D_N2 * D_p * D_in;
-  A_phys = ( A_raw - A_bg - A_p - A_in ) / denom;
-
-  // Calculate the errors
-  A_raw_err = 1.0 / sqrt(Sigma_raw);
-  A_bg_err = sqrt( Sigma_bg / (2*Sigma_raw*Sigma_raw) + Delta_bg*Delta_bg / (12*Sigma_raw*Sigma_raw) + Delta_bg*Delta_bg / (4*Sigma_raw*Sigma_raw*Sigma_raw) );
-  A_p_err = 0;   // Set to 0 for now
-
-
-  D_bg_err = sqrt( Sigma_bg / (2*Sigma_raw*Sigma_raw) + Sigma_bg*Sigma_bg / (12*Sigma_raw*Sigma_raw) + Sigma_bg*Sigma_bg / (4*Sigma_raw*Sigma_raw*Sigma_raw) );   // Set to 0 for now
-  D_N2_err = 0;   // Set to 0 for now
-  D_p_err = 0;    // Set to 0 for now
-  D_in_err = 0;   // Set to 0 for now
-  
-  double D_errors = pow(D_bg_err/D_bg,2) + pow(D_N2_err/D_N2,2) + pow(D_p_err/D_p,2) + pow(D_in_err/D_in,2);
-
-  A_phys_stat_err = A_raw_err / denom;
-  A_phys_sys_err = sqrt( ( A_p_err*A_p_err + A_bg_err*A_bg_err) / (denom*denom) + A_phys*A_phys*D_errors );
-  
+  if(!Asym_runs[key].run_init){
+    
+    time_t time = evtime->Convert();
+    
+    int pol_index = -1;
+    for(int ipol=0; ipol < PolTime.size(); ipol++){
+      time_t time1 = PolTime[ipol][0]->Convert();
+      time_t time2 = PolTime[ipol][1]->Convert();
+      time_t diff1 = time - time1;
+      time_t diff2 = time - time2;
+      
+      if(diff1 > 0 && diff2 < 0) pol_index = ipol;
+      
+    }
+    
+    Asym_runs[key].P_beam[0] = PolVal[pol_index][0] / 100;  //conver to decimal
+    Asym_runs[key].P_beam[1] = PolVal[pol_index][1] / 100;  //conver to decimal
+    
+    Asym_runs[key].run_init = true;
+  } 
 }
+
+
+// This function sets the beam polarization for 
+void analyzed_info::SetAvgPol(){
+    double weightHe3vals = 0;
+    double weightBeamvals = 0;
+    double weightHe3errs = 0;
+    double weightBeamerrs = 0;
+    double weightsum = 0;
+    
+    for (const auto& pair : Asym_runs) {
+      run_info Asym_runs = pair.second;
+      double weight = Asym_runs.N_raw_p + Asym_runs.N_raw_m;
+      
+      weightsum += weight;
+      weightHe3vals += weight*Asym_runs.P_He3;
+      weightBeamvals += weight*Asym_runs.P_beam[0];
+
+      // Hunter says to use 5% error for polarization for now
+      // This will be updated later to a more accurate number
+      weightHe3errs += weight*Asym_runs.P_He3*0.05;
+      weightBeamerrs += weight*Asym_runs.P_beam[1];
+      
+    }
+    
+    P_He3_avg = weightHe3vals / weightsum;
+    P_beam_avg = weightBeamvals / weightsum;
+    P_He3_avg_err = weightHe3errs / weightsum;
+    P_beam_avg_err = weightBeamerrs / weightsum;
+    
+  }
+
+
 
 // This function calculates the asymmetry values. This formalism follows a more
 // standard formalism of calculating each asymmetry contribution and scaling 
@@ -339,91 +444,134 @@ void analyzed_info::CalcAsymValsOld(){
 void analyzed_info::CalcAsymVals(){
 
   ////////////////// Make sure all the variables have been loaded /////////////
-  if(N_raw_p == 0 && N_raw_m == 0){
-    cout<<"Error: [analyzed_info::CalcAsymVals] N_raw_p and N_raw_n are both zero!!!"<<endl;
-    exit(0);
+  if(A_acc < -100 || A_acc_err < -100){
+    cout<<"Warning: [analyzed_info::CalcAsymVals] A_acc or A_acc_err are not set!!!"<<endl;
   }
-  if(N_bg_p == 0 && N_bg_m == 0){
-    cout<<"Warning: [analyzed_info::CalcAsymVals] N_bg_p and N_bg_n are both zero!!!"<<endl;
+  if(f_acc < -100 || f_acc_err < -100){
+    cout<<"Warning: [analyzed_info::CalcAsymVals] f_acc or f_acc_err are not set!!!"<<endl;
   }
-  if(N_pion_p == 0 && N_pion_m == 0){
-    cout<<"Warning: [analyzed_info::CalcAsymVals] N_pion_p and N_pion_n are both zero!!!"<<endl;
+  if(A_pion < -100 || A_pion_err < -100){
+    cout<<"Warning: [analyzed_info::CalcAsymVals] A_pion or A_pion_err are not set!!!"<<endl;
   }
-  if(N_in_p == 0 && N_in_m == 0){
-    cout<<"Warning: [analyzed_info::CalcAsymVals] N_in_p and N_in_n are both zero!!!"<<endl;
+  if(f_pion < -100 || f_pion_err < -100){
+    cout<<"Warning: [analyzed_info::CalcAsymVals] f_pion or f_pion_err are not set!!!"<<endl;
   }
-  if(N_in_cont == 0){
-    cout<<"Warning: [analyzed_info::CalcAsymVals] N_in_cont is zero!!!"<<endl;
+  if(A_in < -100 || A_in_err < -100){
+    cout<<"Warning: [analyzed_info::CalcAsymVals] A_in or A_in_err are not set!!!"<<endl;
+  }
+  if(f_in < -100 || f_in_err < -100){
+    cout<<"Warning: [analyzed_info::CalcAsymVals] f_in or f_in_err are not set!!!"<<endl;
+  }
+  if(f_N2 < -100 || f_N2_err < -100){
+    cout<<"Warning: [analyzed_info::CalcAsymVals] f_N2 or f_N2_err are not set!!!"<<endl;
   }
   if(N_proton == 0){
     cout<<"Warning: [analyzed_info::CalcAsymVals] N_proton is zero!!!"<<endl;
   }
-  if(N_FSI_p == 0 && N_FSI_m == 0){
-    cout<<"Warning: [analyzed_info::CalcAsymVals] N_FSI_p and N_FSI_n are both zero!!!"<<endl;
-  }
   /////////////////////////////////////////////////////////////////////////
 
 
-  int N_N2 = 0;  //Currently set these but should be calcuated later
+  double Sigma_raw_tot = 0;
+  
+  for (const auto& pair : Asym_runs) {
+    run_info Asym_runs = pair.second;
 
-  // Get the total values for each contribution
+    Sigma_raw_tot += Asym_runs.N_raw_p;
+    Sigma_raw_tot += Asym_runs.N_raw_m;
+    N_raw_p += Asym_runs.N_raw_p;
+    N_raw_m += Asym_runs.N_raw_m;
+  }
+  
+  // Get the values from the raw asymmetry
   double Sigma_raw = N_raw_p + N_raw_m;
-  double Sigma_bg =  N_bg_p + N_bg_m;
-  double Sigma_p =   N_proton;
-  double Sigma_N2 =  N_N2;
-  double Sigma_pion =  N_pion_p + N_pion_m;
-  double Sigma_in =  N_in_p + N_in_m;
-  double Sigma_FSI =  N_FSI_p + N_FSI_m;
-
-  // Get the difference in helicity for each contribution
   double Delta_raw = N_raw_p - N_raw_m;
-  double Delta_bg = N_bg_p - N_bg_m; 
-  double Delta_pion = N_pion_p - N_pion_m; 
-  double Delta_in = N_in_p - N_in_m; 
-  double Delta_FSI = N_FSI_p - N_FSI_m; 
-
+  
   // Calculate the fractions
-  f_bg = Sigma_bg / Sigma_raw;
-  f_N2 = Sigma_N2 / Sigma_raw;
-  f_p = Sigma_p / Sigma_raw;
-  f_pion = Sigma_pion / Sigma_raw;
-  f_in = N_in_cont / Sigma_raw;
-  f_FSI = Sigma_FSI / Sigma_raw;
-  f_n = 1 - f_bg - f_N2 - f_p - f_pion - f_in - f_FSI;
+  f_p = 1.0*N_proton / Sigma_raw_tot;
+  f_FSI = 0; // Set this to 0 for now
+  // The rest are calculated in previous scripts
+
+  f_n = 1 - f_p - f_acc - f_N2 - f_pion - f_in - f_FSI;
   
   // Calculate the asymmetry values
   A_raw = Delta_raw / Sigma_raw;
-  A_bg = Delta_bg / Sigma_bg;
-  A_pion = Delta_pion / Sigma_pion;
-  A_in = Delta_in / Sigma_in;
-  A_FSI = Delta_FSI / Sigma_FSI;
+  A_raw_err = CalcAsymErr(N_raw_p, N_raw_m);
+  A_FSI = 0; // Set to 0 for now
   
+  SetAvgPol();  // Get avg polarization for proton asym
+
   // Calculate the proton asymmetry from the expansion
-  A_p = 0;
-  for(int i=0; i < nexp; i++)
-    A_p += T_avg[i] * pow(GetGEGM(0,Q2_avg),i);
-  
-  A_p *= P_He3*P_beam*P_p;
-  
-  // Calculate the total physics asymmetry
-  double denom = P_He3 * P_n * P_beam * f_n;
-  A_phys = ( A_raw - f_bg*A_bg - f_p*A_p - f_pion*A_pion - f_in*A_in - f_FSI*A_FSI ) / denom;
+  //A_p = 0;
+  //for(int i=0; i < nexp; i++)
+  //A_p += T_avg[i] * pow(GetGEGMFromTheory(0,Q2_avg),i);
 
-  // Calculate the errors
-  A_raw_err = 1.0 / sqrt(Sigma_raw);
-  A_bg_err = 0;  // Set to 0 for now
-  A_p_err = 0;   // Set to 0 for now
+  // Calculate proton asym from averages
+  double A_p_phys = GetAFromQ2(0,Q2_avg);
+  A_p = P_He3_avg*P_beam_avg*P_p*A_p_phys;
 
-  f_bg_err = 0;    // Set to 0 for now
-  f_N2_err = 0;    // Set to 0 for now
-  f_p_err = 0;     // Set to 0 for now
-  f_pion_err = 0;  // Set to 0 for now
-  f_in_err = 0;    // Set to 0 for now
+  ////// Proton systematic errors ////////////////////////////////////
+  double R = GetGEGMFromTheory(0, Q2_avg); // Get GE/GM from parameterization
+  double a = epsilon_avg / tau_avg;
+  double b = sqrt(2*epsilon_avg*(1-epsilon_avg)/tau_avg)*Px_avg;
+  double c = sqrt(1 - epsilon_avg*epsilon_avg)*Pz_avg;
+
+  double R_err = R*( 0.01 + 0.01 ); //Assume 1% errors on parameterizations, to be updated later
+  double A_p_phys_err = (2*R*A_p_phys + b)/(1 + a*R*R) * R_err;
+  A_p_err = A_p * sqrt( pow(A_p_phys_err/A_p_phys,2) + pow(P_beam_avg_err/P_beam_avg,2) + pow(P_He3_avg_err/P_He3_avg,2) );
+  
+  f_p_err = CalcFractionErr(N_proton, Sigma_raw_tot);
   f_FSI_err = 0;   // Set to 0 for now
+  //!!!! The rest are calculated in previous scripts !!!!!!!!!///////
   
-  // Separate out the statistical and systematic errors
-  A_phys_stat_err = A_raw_err / denom;
-  A_phys_sys_err = 0;
+  // Run summation to get total asymmetry
+  double A_phys_num = 0;
+  double A_phys_stat_sum = 0;
+  double A_phys_sys_sum = 0;
+
+  // Loop over all runs
+  for (const auto& pair : Asym_runs) {
+    run_info Asym_runs = pair.second;
+    
+    // Skip if run has no events in it
+    if(Asym_runs.N_raw_p == 0 || Asym_runs.N_raw_m == 0) continue;
+
+    // Calculate the raw asymmetry and the error
+    double A_raw_run = 1.0*(Asym_runs.N_raw_p - Asym_runs.N_raw_m) / (Asym_runs.N_raw_p + Asym_runs.N_raw_m);
+    double A_raw_err_run = CalcAsymErr(Asym_runs.N_raw_p, Asym_runs.N_raw_m);
+
+    // Calculate the physical asymmetry and statistical error
+    double denom = Asym_runs.P_He3 * Asym_runs.P_beam[0] * P_n * f_n;
+    double A_phys_run = ( A_raw_run - f_acc*A_acc - f_p*A_p - f_pion*A_pion - f_in*A_in - f_FSI*A_FSI ) / denom;
+    double A_stat_err_run = A_raw_err_run / denom;
+
+    // These sums are needed to get the total asym from all runs
+    A_phys_num += A_phys_run / (A_stat_err_run*A_stat_err_run);
+    A_phys_stat_sum += 1.0 / (A_stat_err_run*A_stat_err_run);
+    
+  }
+  
+  // From all runs combined we now calculate the total
+  A_phys = A_phys_num / A_phys_stat_sum;
+
+  // This is the statistical error
+  A_phys_stat_err = 1 / sqrt(A_phys_stat_sum);
+
+  // Here we separate parts of the systematic error because they are long //////
+
+  // Asymmetry systematic error squared
+  double A_sys_err = (f_acc*f_acc*A_acc_err*A_acc_err + f_pion*f_pion*A_pion_err*A_pion_err + f_in*f_in*A_in_err*A_in_err) / pow(P_He3_avg*P_beam_avg*P_n*f_n,2);
+  // Fraction systematic error squared
+  double f_sys_err = pow(A_phys/f_n*f_N2_err,2) + pow(CalcAsymFractionErr(A_acc, f_acc_err),2) + pow(CalcAsymFractionErr(A_pion, f_pion_err),2) + pow(CalcAsymFractionErr(A_in, f_in_err),2);
+  // Polarization systematic error squared
+  double P_sys_err = A_phys*A_phys * pow(P_He3_avg_err/P_He3_avg,2) + pow(P_beam_avg_err/P_beam_avg,2);
+
+  // Total systematic error adding up the three parts above
+  A_phys_sys_err = sqrt(A_sys_err + f_sys_err + P_sys_err);
+
+  // The final error is the statistical + systematic
+  A_phys_tot_err = sqrt(A_phys_stat_err*A_phys_stat_err + A_phys_sys_err*A_phys_sys_err);
+
+  GetGEGMFromA(A_phys, A_phys_stat_err, A_phys_sys_err); // Get form factor result
   
 }
 

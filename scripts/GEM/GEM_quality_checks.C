@@ -12,12 +12,11 @@
 #include "TLorentzVector.h"
 
 #include "../../include/gen-ana.h"
-#include "../../dflay/src/JSONManager.cxx"
 
 int nmodules = 8;
 const int maxHits=1000;
 
-std::string GEN_config;
+TString GEN_config;
 std::vector<int> runnums; 
 
 struct plotinfo{
@@ -146,23 +145,21 @@ void analyze_subset(TChain *T, int set, std::vector<int> runnums_set){
 
 }
 
-void GEM_quality_checks(const char *configfilename){
+void GEM_quality_checks(const std::string configfilename){
 
   int nruns_set = 80;  //number of runs that can fit on one pdf
 
+  string configdir = "../../config/";
+
   // reading input config file ---------------------------------------
-  JSONManager *jmgr = new JSONManager(configfilename);
+  Utilities::KinConf kin_info = Utilities::LoadKinConfig(configdir + configfilename);
 
   // parsing trees
-  std::string rootfile_dir = jmgr->GetValueFromKey_str("rootfile_dir");
-  GEN_config = jmgr->GetValueFromKey_str("GEN_config");
-  jmgr->GetVectorFromKey<int>("runnums",runnums);
-  int nruns = jmgr->GetValueFromKey<int>("Nruns_to_ana"); // # runs to analyze
- 
-  // setting up global cuts
-  std::string gcut = jmgr->GetValueFromKey_str("global_cut");
-  TCut globalcut = gcut.c_str();
-  
+  std::string rootfile_dir = kin_info.rootfile_dir;
+  GEN_config = kin_info.conf;
+  vector<int> runnums = kin_info.runnums;
+  int nruns = kin_info.nruns;
+   
   if (nruns < 1 || nruns > runnums.size()) nruns = runnums.size();
   if(nruns < runnums.size()) runnums.resize(nruns);
 
