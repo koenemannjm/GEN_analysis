@@ -14,34 +14,26 @@
 
 
 
-void Data_sim_compare(TString input = "GEN2",TString tgt = "He3"){
+void Data_sim_compare(TString cfg = "GEN2"){
 
   gStyle->SetOptStat(0);
   gStyle->SetOptFit(1);
 
-  Analysis::fbg_shape_option = "pol4";
+  distribution_fits *dists = new distribution_fits();
+
+  if(cfg == "GEN2") dists->SetBgShapeOption("pol2");
+  else dists->SetBgShapeOption("from data");
+
   bool use_dy_cut = false;
 
-  TString jmgr_file = "../../config/" + input + "_" + tgt + ".cfg";
+  TString jmgr_file = "../../config/" + cfg + "_He3.cfg";
 
-  Utilities::KinConf kin_info = Utilities::LoadKinConfig(jmgr_file);
+  Utilities::KinConf kin_info = Utilities::LoadKinConfig(jmgr_file,1);
 
-  TChain *T_data = Utilities::LoadAnalyzedRootFiles(kin_info,1);
-  TChain *T_sim = Utilities::LoadAnalyzedRootFiles(kin_info,0);
-  
-  TString cfg = kin_info.conf;
-  /*
-  TString cfg = input;
-  TString cfg_sim = input;
-  if(input == "GEN4all"){
-    cfg = "GEN4";
-    cfg_sim = "GEN4";
-  }
-  else if(input == "GEN4b") cfg_sim = "GEN4";
-  */
+  analyzed_tree *T_data = Utilities::LoadAnalyzedRootFiles(kin_info,1,0);
+  analyzed_tree *T_sim = Utilities::LoadAnalyzedRootFiles(kin_info,0,0);
 
-
-   // elastic cut limits
+  // elastic cut limits
   double W2min = kin_info.W2min;
   double W2max = kin_info.W2max;
   double dymin = kin_info.dymin;
@@ -62,9 +54,9 @@ void Data_sim_compare(TString input = "GEN2",TString tgt = "He3"){
   
   //dx
   TH1F *hdx_data = new TH1F("hdx_data","",nbins,xmin,xmax);
-  Analysis::hdx_sim_p = new TH1F("hdx_sim_p","",nbins,xmin,xmax);
-  Analysis::hdx_sim_n = new TH1F("hdx_sim_n","",nbins,xmin,xmax);
-  Analysis::hdx_bg_data = new TH1F("hdx_bg_data","",nbins,xmin,xmax);
+  TH1F *hdx_sim_p = new TH1F("hdx_sim_p","",nbins,xmin,xmax);
+  TH1F *hdx_sim_n = new TH1F("hdx_sim_n","",nbins,xmin,xmax);
+  TH1F *hdx_bg_data = new TH1F("hdx_bg_data","",nbins,xmin,xmax);
 
   TCut W2Cut = Form("W2 > %g && W2 < %g",W2min,W2max);
   TCut dyCut = Form("dy > %g && dy < %g",dymin,dymax);
@@ -81,77 +73,60 @@ void Data_sim_compare(TString input = "GEN2",TString tgt = "He3"){
     CutSimN = Form("(W2 > %g && W2 < %g && dy > %g && dy < %g && fnucl == 0) * weight",W2min,W2max,dymin,dymax);
   }
 
-  T_data->Draw("dx>>hdx_data",DataCut);
-  T_data->Draw("dx>>hdx_bg_data",coinCut && W2Cut && !dyCut);
-  T_sim->Draw("dx>>hdx_sim_p",CutSimP);
-  T_sim->Draw("dx>>hdx_sim_n",CutSimN);
+  T_data->fChain->Draw("dx>>hdx_data",DataCut);
+  T_data->fChain->Draw("dx>>hdx_bg_data",coinCut && W2Cut && !dyCut);
+  T_sim->fChain->Draw("dx>>hdx_sim_p",CutSimP);
+  T_sim->fChain->Draw("dx>>hdx_sim_n",CutSimN);
   
-  double scale = hdx_data->Integral();
-
-  hdx_data->Scale(1.0/hdx_data->Integral());
-  Analysis::hdx_sim_p->Scale(1.0/Analysis::hdx_sim_p->Integral());
-  Analysis::hdx_sim_n->Scale(1.0/Analysis::hdx_sim_n->Integral());
-  Analysis::hdx_bg_data->Scale(1.0/Analysis::hdx_bg_data->Integral());
-
-  Analysis::He3_sim_fit(hdx_data);
+  dists->SetDataShape(hdx_data);
+  dists->SetPShape(hdx_sim_p);
+  dists->SetNShape(hdx_sim_n);
+  dists->SetBgShape(hdx_bg_data);
+  
+  dists->He3_fit_dists();
   
   //Copy all the result histograms
-  TH1F *hdx_sim_p = new TH1F(*Analysis::hdx_sim_p);
-  TH1F *hdx_sim_n = new TH1F(*Analysis::hdx_sim_n);
-  TH1F *hdx_bg = new TH1F(*Analysis::hdx_bg);
-  TH1F *hdx_total_fit = new TH1F(*Analysis::hdx_total_fit);
+  TH1F *hdx_data_plot = dists->GetDataHist();
+  TH1F *hdx_sim_p_plot = dists->GetPHist();
+  TH1F *hdx_sim_n_plot = dists->GetNHist();
+  TH1F *hdx_bg_plot = dists->GetBgHist();
+  TH1F *hdx_total_fit_plot = dists->GetTotalHist();
 
   
   gStyle->SetOptFit(0);
   
-  hdx_data->SetTitle("Data/Simulation Comparisons " + cfg + ";#Deltax (m);Entries");
+  hdx_data_plot->SetTitle("Data/Simulation Comparisons " + cfg + ";#Deltax (m);Entries");
 
-  hdx_data->Scale(scale);
-  hdx_total_fit->Scale(scale);
-  hdx_sim_p->Scale(scale);
-  hdx_sim_n->Scale(scale);
-  hdx_bg->Scale(scale);
+  hdx_data_plot->SetMarkerStyle(kFullCircle);
+  hdx_total_fit_plot->SetFillColorAlpha(30,0.5);
+  hdx_sim_p_plot->SetFillColorAlpha(kRed,0.3);
+  hdx_sim_n_plot->SetFillColorAlpha(kBlue,0.3);
+  hdx_bg_plot->SetFillColorAlpha(kMagenta,0.3);
 
-  hdx_data->SetMarkerStyle(kFullCircle);
-  hdx_total_fit->SetFillColorAlpha(30,0.5);
-  hdx_sim_p->SetFillColorAlpha(kRed,0.3);
-  hdx_sim_n->SetFillColorAlpha(kBlue,0.3);
-  hdx_bg->SetFillColorAlpha(kMagenta,0.3);
-
-  hdx_total_fit->SetLineStyle(7);
-  hdx_sim_p->SetLineStyle(7);
-  hdx_sim_n->SetLineStyle(7);
-  hdx_bg->SetLineStyle(7);
+  hdx_total_fit_plot->SetLineStyle(7);
+  hdx_sim_p_plot->SetLineStyle(7);
+  hdx_sim_n_plot->SetLineStyle(7);
+  hdx_bg_plot->SetLineStyle(7);
   
-  hdx_total_fit->SetLineColor(30);
-  hdx_sim_p->SetLineColor(kRed);
-  hdx_sim_n->SetLineColor(kBlue);
-  hdx_bg->SetLineColor(kMagenta);
+  hdx_total_fit_plot->SetLineColor(30);
+  hdx_sim_p_plot->SetLineColor(kRed);
+  hdx_sim_n_plot->SetLineColor(kBlue);
+  hdx_bg_plot->SetLineColor(kMagenta);
   
   TCanvas *c = new TCanvas("c","",800,600);
-  hdx_data->Draw();
-  hdx_total_fit->Draw("same hist");
-  hdx_sim_p->Draw("same hist");
-  hdx_sim_n->Draw("same hist");
-  hdx_bg->Draw("same hist");
+  hdx_data_plot->Draw();
+  hdx_total_fit_plot->Draw("same hist");
+  hdx_sim_p_plot->Draw("same hist");
+  hdx_sim_n_plot->Draw("same hist");
+  hdx_bg_plot->Draw("same hist");
 
-  TString bg_fit_type;
-
-  if(Analysis::fbg_shape_option == "pol4")
-    bg_fit_type = "BG 4th od fit";
-  else if(Analysis::fbg_shape_option == "from data")
-    bg_fit_type = "BG from data";
-  else if(Analysis::fbg_shape_option == "pol3")
-    bg_fit_type = "BG 3rd od fit";
-  else if(Analysis::fbg_shape_option == "gaus")
-    bg_fit_type = "BG Gaussian";
 
   TLegend *legend = new TLegend(0.65,0.72,0.89,0.89);
   legend->AddEntry("hdx_data","Data","p");
   legend->AddEntry("hdx_total_fit","MC Fit","lf");
   legend->AddEntry("hdx_sim_p","MC p","lf");
   legend->AddEntry("hdx_sim_n","MC n","lf");
-  legend->AddEntry("hdx_bg",bg_fit_type,"lf");
+  legend->AddEntry("hdx_bg","Background","lf");
   legend->SetLineColor(0);
   legend->Draw("same");
 
@@ -160,12 +135,12 @@ void Data_sim_compare(TString input = "GEN2",TString tgt = "He3"){
   pt->AddText("Coincidence Cuts");
   pt->AddText(Form("%g < W^{2} < %g",W2min,W2max));
   if(use_dy_cut) pt->AddText(Form("%g < #Deltay < %g",dymin,dymax));
-  pt->AddText(Form("%i Neutrons",(int)hdx_sim_n->GetSumOfWeights()))->SetTextColor(kBlue);
+  pt->AddText(Form("%i Neutrons",(int)hdx_sim_n_plot->GetSumOfWeights()))->SetTextColor(kBlue);
   pt->SetFillColor(0);
   pt->Draw("same");
 
 
-  TString output = "Data_sim_"+input+".pdf";
+  TString output = "Data_sim_"+cfg+".pdf";
   
   //c->SaveAs("../../plots/" + output);
   
