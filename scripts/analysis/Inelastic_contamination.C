@@ -1,11 +1,11 @@
 //////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////
 //   Created by Sean Jeffas, sj9ry@virginia.edu
-//   Last Modified February 29, 2024
+//   Last Modified August 7, 2024
 //
 //
-//   The purpose of this script is to calculate the helicity
-//   of inelastic data.
+//   The purpose of this script is to calculate the inelastic
+//   corrections.
 //
 //////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////
@@ -37,17 +37,24 @@ void getDB(TString cfg){
 }
 
 
-void Inelastic_contamination(TString cfg = "GEN2"){
+void Inelastic_contamination(TString cfg = "GEN2", double W2mincut = -100, double W2maxcut = -100, double dycut = -100){
 
   gErrorIgnoreLevel = kError; // Ignores all ROOT warnings
   gStyle->SetOptStat(0);
   gStyle->SetOptFit(0);
 
-  getDB(cfg);
+  TString kin;
+
+  if(cfg == "GEN3")
+    kin = "Kin3";
+  else if(cfg == "GEN4")
+    kin = "Kin4";
+  else
+    kin = "Kin2";
 
   TString jmgr_file = "../../config/" + cfg + "_He3.cfg";
   Utilities::KinConf kin_info = Utilities::LoadKinConfig(jmgr_file,1);
-
+  
    // elastic cut limits
   double W2min = kin_info.W2min;
   double W2max = kin_info.W2max;
@@ -64,13 +71,25 @@ void Inelastic_contamination(TString cfg = "GEN2"){
   double dymin = dy_n[0] - dy_n[1];
   double dymax = dy_n[0] + dy_n[1];
 
+  if(W2mincut > -10 && W2maxcut > -10 && dycut > -10){
+    W2min = W2mincut;
+    W2max = W2maxcut;
+    dymax = dycut;
+    dymin = -1*dymax;
+    dxmin = dymin;
+    dxmax = dymax;
+  }
+  
+  DBInfo.W2min = W2min;
+  DBInfo.W2max = W2max;
+  DBInfo.dymax = dymax;
+  getDB(cfg);
+
+
   int IHWP_Flip = kin_info.IHWP_Flip;
 
-  double coin_min = kin_info.coin_time_cut[0] - kin_info.Nsigma_coin_time*kin_info.coin_time_cut[1];
-  double coin_max = kin_info.coin_time_cut[0] + kin_info.Nsigma_coin_time*kin_info.coin_time_cut[1];
-  
-  double coin_bg_min = kin_info.coin_time_cut[0] + (1 + 3)*kin_info.Nsigma_coin_time*kin_info.coin_time_cut[1];
-  double coin_bg_max = kin_info.coin_time_cut[0] + (3 + 3)*kin_info.Nsigma_coin_time*kin_info.coin_time_cut[1];
+  double coin_min = kin_info.coin_min;
+  double coin_max = kin_info.coin_max;
 
   analyzed_tree *T_data = Utilities::LoadAnalyzedRootFiles(kin_info,1,0);
   analyzed_tree *T_sim = Utilities::LoadAnalyzedRootFiles(kin_info,0,0);
@@ -80,12 +99,14 @@ void Inelastic_contamination(TString cfg = "GEN2"){
   if(cfg == "GEN2") dists->SetBgShapeOption("pol2");
   else dists->SetBgShapeOption("from data");
   
-
+  //dists->SetBgShapeOption("from data");
 
   /////Set the histograms
   int nbins = 100;
   double hxmin = -4;
   double hxmax = 2.5;
+  double hymin = -2;
+  double hymax = 2;
   double W2min_r = -1;
   double W2max_r = 7;
   double W2bin_size = 0.2;
@@ -93,6 +114,8 @@ void Inelastic_contamination(TString cfg = "GEN2"){
   if(cfg == "GEN2"){
     hxmin = -6;
     hxmax = 3;
+    hymin = -4;
+    hymax = 4;
     W2min_r = -1;
     W2max_r = 7;
   }
@@ -131,10 +154,10 @@ void Inelastic_contamination(TString cfg = "GEN2"){
   TH1F *hdx_bg_data = new TH1F("hdx_bg_data","",nbins,hxmin,hxmax);
 
   //dxdy
-  TH2F *hdxdy_elas = new TH2F("hdxdy_elas","^{3}He HCal Elastics;#Deltay (m);#Deltax (m)",150,-2,2,150,-6,6);
+  TH2F *hdxdy_elas = new TH2F("hdxdy_elas",kin + " ^{3}He HCal;#Deltay (m);#Deltax (m)",150,hymin,hymax,150,-6,6);
 
   //W2
-  TH1F *hW2_all = new TH1F("hW2_all",cfg +" W^{2} With Different Cuts;W^{2};",nbinsW2,-1,7); // All W2 in the dx cuts
+  TH1F *hW2_all = new TH1F("hW2_all",kin + " W^{2} With Different Cuts;W^{2};",nbinsW2,-1,7); // All W2 in the dx cuts
   TH1F *hW2_cut1 = new TH1F("hW2_cut1","",nbinsW2,-1,7); // W2 in inelastic cuts
   TH1F *hW2_cut2 = new TH1F("hW2_cut2","",nbinsW2,-1,7); // W2 in elastic cuts
   
@@ -159,7 +182,7 @@ void Inelastic_contamination(TString cfg = "GEN2"){
 
 
   while(nevent < maxevent){
-    //while(nevent < 10000000){
+  //while(nevent < 5000000){
     T_data->GetEntry(nevent++);  
 
     ////// Define all the cuts we will use on the data  ////////////////
@@ -172,8 +195,6 @@ void Inelastic_contamination(TString cfg = "GEN2"){
     bool good_dy_elas = T_data->dy > dymin && T_data->dy < dymax;
     bool good_dx_elas = T_data->dx > dxmin && T_data->dx < dxmax;
     bool good_coin_time = T_data->coin_time > coin_min && T_data->coin_time < coin_max;
-    bool bad_coin_time = T_data->coin_time < coin_min - 3*kin_info.coin_time_cut[1] || T_data->coin_time > coin_max + 3*kin_info.coin_time_cut[1];
-    bool bad_coin_time_cont = T_data->coin_time > coin_bg_min && T_data->coin_time < coin_bg_max;
     //////////////////////////////////////////////////////////////////////
 
     int helicity = T_data->helicity;
@@ -251,8 +272,8 @@ void Inelastic_contamination(TString cfg = "GEN2"){
 
   /////////////////////////////////////////////////////////////////////////
 
-  hW2_x_elas->SetTitle(cfg + " with Elastic Cuts;#Deltax (m);W^{2} (GeV^{2})");
-  hW2_x_bg->SetTitle(cfg + " with Background Cuts;#Deltax (m);W^{2} (GeV^{2})");
+  hW2_x_elas->SetTitle("Quasielastic Cuts;#Deltax (m);W^{2} (GeV^{2})");
+  hW2_x_bg->SetTitle("Background Cuts;#Deltax (m);W^{2} (GeV^{2})");
 
   TLine *lymin = new TLine(W2min_r,dxmin,W2max_r,dxmin);
   TLine *lymax = new TLine(W2min_r,dxmax,W2max_r,dxmax);
@@ -260,15 +281,15 @@ void Inelastic_contamination(TString cfg = "GEN2"){
   lymax->SetLineColor(kRed);
 
   TPaveText *pt1 = new TPaveText(.64,.21,.89,.33,"ndc");
-  pt1->AddText("Cuts on good tracks");
-  pt1->AddText("Coincidence Cuts");
+  pt1->AddText("Vertex & Preshower Cut");
+  pt1->AddText("Coincidence Cut");
   pt1->AddText(Form("|#Deltay| < %g",dy_n[1]));
   pt1->SetFillColor(0);
 
   TPaveText *pt2 = new TPaveText(.64,.21,.89,.33,"ndc");
-  pt2->AddText("Cuts on good tracks");
-  pt2->AddText("Coincidence Cuts");
-  pt2->AddText(Form("|#Deltay| > %g",dy_bg_max));
+  pt2->AddText("Vertex & Preshower Cut");
+  pt2->AddText("Coincidence Cut");
+  //pt2->AddText(Form("#Deltay < %g or #Deltay > %g",dy_bg_min,dy_bg_max));
   pt2->SetFillColor(0);
   
   TLegend *legend3 = new TLegend(0.64,0.14,0.89,0.21);
@@ -334,10 +355,10 @@ void Inelastic_contamination(TString cfg = "GEN2"){
   hW2_cut1->Draw("same");
   hW2_cut2->Draw("same"); 
 
-  TLegend *legend4 = new TLegend(0.11,0.72,0.45,0.89);
+  TLegend *legend4 = new TLegend(0.11,0.53,0.43,0.89);
   legend4->AddEntry("hW2_all",Form("|#Deltax| < %g",dxmax),"l");
-  legend4->AddEntry("hW2_cut1",Form("|#Deltax| < %g & |#Deltay| > %g",dxmax,dy_bg_max),"l");
-  legend4->AddEntry("hW2_cut2",Form("|#DeltaR| < %g",dxmax),"l");
+  legend4->AddEntry("hW2_cut1",Form("#splitline{|#Deltax| < %g &}{(#Deltay < %g or #Deltay > %g)}",dxmax,dy_bg_min,dy_bg_max),"l");
+  legend4->AddEntry("hW2_cut2",Form("|#Deltax| < %g & |#Deltay| < %g",dxmax,dymax),"l");
   legend4->SetLineColor(0);
   legend4->Draw("same");
   
@@ -345,10 +366,13 @@ void Inelastic_contamination(TString cfg = "GEN2"){
   pad2->SetGridx();
   gA_elas->Draw("AP");
   gA_bg->Draw("P");
+  
+  pad2->Update();
 
   gA_elas->GetXaxis()->SetLimits(W2min_r,W2max_r);
   gA_elas->GetYaxis()->SetRangeUser(-3,8);
   
+  pad2->Update();
   
   //////////////////////////////////////////////////////////////////////
  
@@ -383,21 +407,21 @@ void Inelastic_contamination(TString cfg = "GEN2"){
   hdx_bg_plot->SetLineColor(kMagenta);
 
   
-  TCanvas *c3 = new TCanvas("c3","",800,600);
-  TBox *box1 = new TBox(-2,-6,dy_bg_min,6);
-  TBox *box2 = new TBox(dy_bg_max,-6,2,6);
+  TCanvas *c3 = new TCanvas("c3","",600,800);
+  TBox *box1 = new TBox(hymin,-6,dy_bg_min,6);
+  TBox *box2 = new TBox(dy_bg_max,-6,hymax,6);
   box1->SetFillColorAlpha(kRed, 0.4);
   box2->SetFillColorAlpha(kRed, 0.4);
 
-  TPaveText *pt3 = new TPaveText(.374,.762,.625,.892,"ndc");
-  pt3->AddText("Cuts on good tracks");
-  pt3->AddText("Coincidence Cuts");
+  TPaveText *pt3 = new TPaveText(.289,.731,.686,.892,"ndc");
+  pt3->AddText("Vertex & Preshower Cut");
+  pt3->AddText("Coincidence Cut");
   pt3->AddText(Form("%g < W^{2} < %g",W2min,W2max));
-  pt3->AddText(Form("|#Deltay| > %g",dy_bg_max));
+  //pt3->AddText(Form("#Deltay < %g or #Deltay > %g",dy_bg_min,dy_bg_max));
   pt3->SetFillColor(0);
   
-  TLegend *legend5 = new TLegend(0.374,0.717,0.625,0.764);
-  legend5->AddEntry(box1,"Bkgd Cut","f");
+  TLegend *legend5 = new TLegend(0.289,0.684,0.686,0.731);
+  legend5->AddEntry(box1,"Background Cut","f");
   legend5->SetLineColor(0);
 
   hdxdy_elas->Draw("colz");
@@ -407,7 +431,7 @@ void Inelastic_contamination(TString cfg = "GEN2"){
   legend5->Draw("same");
 
   TCanvas *c4 = new TCanvas("c4","",800,600);
-  hdx_data_plot->SetTitle(cfg + " Data/Simulation Comparisons;#Deltax (m);Entries");
+  hdx_data_plot->SetTitle(kin + " Data/Simulation Comparisons;#Deltax (m);Entries");
   hdx_data_plot->Draw();
   hdx_total_fit_plot->Draw("hist same");
   hdx_sim_p_plot->Draw("hist same");
@@ -416,8 +440,8 @@ void Inelastic_contamination(TString cfg = "GEN2"){
 
   c4->Update();
 
-  TLine *lmin = new TLine(dxmin,c4->GetUymin(),dxmin,c4->GetUymax()/2);
-  TLine *lmax = new TLine(dxmax,c4->GetUymin(),dxmax,c4->GetUymax()/2);
+  TLine *lmin = new TLine(dxmin,c4->GetUymin(),dxmin,c4->GetUymax()/3);
+  TLine *lmax = new TLine(dxmax,c4->GetUymin(),dxmax,c4->GetUymax()/3);
   lmin->SetLineColor(kRed);
   lmax->SetLineColor(kRed);
   lmin->SetLineWidth(4);
@@ -431,9 +455,17 @@ void Inelastic_contamination(TString cfg = "GEN2"){
   legend->AddEntry("hdx_sim_p","MC p","lf");
   legend->AddEntry("hdx_sim_n","MC n","lf");
   legend->AddEntry("hdx_bg","Background","lf");
-  legend->AddEntry(lmin,"QE Cut","l");
+  legend->AddEntry(lmin,Form("|#Deltax| < %g",dxmax),"l");
   legend->SetLineColor(0);
   legend->Draw("same");
+
+  TPaveText *pt = new TPaveText(.59,.46,.89,.63,"ndc");
+  pt->AddText("Vertex & Preshower Cuts");
+  pt->AddText("Coincidence Cut");
+  pt->AddText(Form("%g < W^{2} < %g",W2min,W2max));
+  pt->AddText(Form("|#Deltay| < %g",dymax));
+  pt->SetFillColor(0);
+  pt->Draw("same");
 
   TCanvas *c5 = new TCanvas("c5","",800,600);
   hcoin_time_inel->Scale(1.0/hcoin_time_inel->Integral());
@@ -442,9 +474,9 @@ void Inelastic_contamination(TString cfg = "GEN2"){
   hcoin_time_elas->Draw("hist");
   hcoin_time_inel->Draw("same hist");
 
-  double N_in = dists->GetBgYield(dxmin, dxmax);
-  
-  N_in -= N_QE*(DBInfo.AccidentalFraction + DBInfo.NitrogenFraction + DBInfo.PionFraction);
+  double N_bg = dists->GetBgYield(dxmin, dxmax);
+    
+  double N_in = N_bg - N_QE*(DBInfo.AccidentalFraction + DBInfo.NitrogenFraction + DBInfo.PionFraction);
 
   double Delta_in = N_p - N_m;
   double Sigma_in = N_p + N_m;
@@ -453,6 +485,16 @@ void Inelastic_contamination(TString cfg = "GEN2"){
   double Aerr = CalcAsymErr(N_p,N_m);
   double Ferr = CalcFractionErr(N_in, N_QE);
 
+  DBInfo.InelasticAsymmetry = A_in;
+  DBInfo.InelasticAsymmetryErr = Aerr;
+  DBInfo.InelasticFraction = f_in;
+  DBInfo.InelasticFractionErr = Ferr;
+  
+  DB_SetCorrections(DBInfo);
+
+  cout<<"--------------- Inelastic Info ---------------"<<endl;
+  cout<<"Np = "<<N_p<<"  and  Nm = "<<N_m<<endl;
+  cout<<"Nbg = "<<N_bg<<"  and  Nin = "<<N_in<<endl;
   cout<<"Inelastic Asymmetry = "<<A_in<<"  Aerr = "<<Aerr<<endl;
   cout<<"Inelastic Fraction = "<<f_in<<"  Ferr = "<<Ferr<<endl;
 
@@ -462,9 +504,9 @@ void Inelastic_contamination(TString cfg = "GEN2"){
 
   TString outputfile = plot_dir + plot_name;
 
-  c1->Print(outputfile + "(");
+  c3->Print(outputfile + "(");
+  c1->Print(outputfile);
   c2->Print(outputfile);
-  c3->Print(outputfile);
   c4->Print(outputfile);
   c5->Print(outputfile + ")");
 

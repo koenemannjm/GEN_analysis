@@ -1,6 +1,7 @@
 #include <iostream>
 
 #include "../include/Analysis.h"
+#include "../include/FF_param.h"
 
 
 // This script calculates the variables for GE/GM extraction.
@@ -68,47 +69,58 @@ void UpdateAverageKinematics(analyzed_tree *T){
 
 // This gets the GE/GM value from parameterizations from a Q2 value
 // This can be found in literature or Seamus/Freddy's theses 
-double GetGEGMFromTheory(bool is_neutron, double Q2){
+void GetGEGMFromTheory(bool is_neutron, double Q2, double &R, double &R_err){
 
   double m = constant::Mp;
   double tau = Q2 / (4 * m * m);
   double GD = pow(1.0 + Q2/(0.71), -2.0);  // Dipole approximation
-  double GE,GM;
+  double GE,GM,GE_err,GM_err;
 
   if(is_neutron){ // Neutron parameterizations
     // Seamus Fit
-    GE = (1.520*tau + 2.629*tau*tau + 3.055*tau*tau*tau)*GD/(1.0+5.222*tau+0.040*tau*tau+11.438*tau*tau*tau);
+    //GE = (1.520*tau + 2.629*tau*tau + 3.055*tau*tau*tau)*GD/(1.0+5.222*tau+0.040*tau*tau+11.438*tau*tau*tau);
     // Kelly
-    GM = -1.913*(1.0+2.33*tau)/(1.0 + 14.72*tau + 24.20*tau*tau + 84.1*tau*tau*tau );
+    //GM = -1.913*(1.0+2.33*tau)/(1.0 + 14.72*tau + 24.20*tau*tau + 84.1*tau*tau*tau );
+    // Instead of Seamus or Kelly we use Ye global fit
+    GetGENFit(Q2,GE,GE_err);
+    GetGMNFit(Q2,GM,GM_err);
   }
   else{ // Proton parameterizations
     // Kelly
-    GE = (1.0-0.24*tau)/(1.0 + 10.98*tau + 12.82*tau*tau + 21.97*tau*tau*tau );
+    //GE = (1.0-0.24*tau)/(1.0 + 10.98*tau + 12.82*tau*tau + 21.97*tau*tau*tau );
     // Kelly
-    GM = 2.79*(1.0+0.12*tau)/(1.0 + 10.97*tau + 18.86*tau*tau + 6.55*tau*tau*tau );
+    //GM = 2.79*(1.0+0.12*tau)/(1.0 + 10.97*tau + 18.86*tau*tau + 6.55*tau*tau*tau );
+    // Instead of Seamus or Kelly we use Ye global fit
+    GetGEPFit(Q2,GE,GE_err);
+    GetGMPFit(Q2,GM,GM_err);
   }
 
-  return GE / GM;
+  R = GE / GM;
+  R_err = R*sqrt( pow(GE_err/GE,2) + pow(GM_err/GM,2) ); 
 }
 
 // Given the average kinematic values get the asymmetry from this Q2 value
 // by following the GE/GM parameterizations
-double GetAFromQ2(bool is_neutron, double Q2){
+void GetAFromQ2(bool is_neutron, double Q2, double &A, double &A_err){
 
   if(epsilon_avg == 0 || tau_avg == 0){
     cout<<"Error: [Analysis::GetAFromQ2] epsilon and tau values have not been set!!!"<<endl;
     exit(0);
   }
 
-  double R = GetGEGMFromTheory(is_neutron, Q2); // Get GE/GM from parameterization
-  double e = epsilon_avg;
-  double t = tau_avg;
-  
-  // This is the calculation for A
-  double num = -1*sqrt(2*e*(1-e)/t)*Px_avg*R - sqrt(1 - e*e)*Pz_avg;
-  double den = 1 + e / t * R*R;
+  double R, R_err;
+  GetGEGMFromTheory(is_neutron, Q2_avg, R, R_err); // Get GE/GM from parameterization
+  double A_par = epsilon_avg / tau_avg;
+  double B_par = sqrt(2*epsilon_avg*(1-epsilon_avg)/tau_avg)*Px_avg;
+  double C_par = sqrt(1 - epsilon_avg*epsilon_avg)*Pz_avg;
 
-  return num / den;
+  if(!is_neutron){
+    GEGMp = R;
+    GEGMp_err = R_err;
+  }
+  
+  A = -1.0 / ( 1 + A_par * R* R)* ( B_par * R + C_par );
+  A_err = (2*A_par*R*A + B_par)/(1 + A_par*R*R) * R_err;
 }
 
 // From the average kinematic values and the asymmetry measurement calculate
@@ -127,17 +139,21 @@ double GetGEGMFromA(double A_phys, double A_stat_err, double A_sys_err){
   double B = Px_avg*sqrt(2*e*(1 - e) / t);
   double C = A_phys + Pz_avg*sqrt(1 - e*e);
 
+  A_quad = A;
+  B_quad = B;
+  C_quad = C;
+  
   // We are solving the quadratic equation to get GE/GM
   double R1 = (-B + sqrt(B*B - 4*A*C)) / (2*A);
   double R2 = (-B - sqrt(B*B - 4*A*C)) / (2*A);
-  GEGM = R1;  // I think this root is correct
+  GEGMn = R1;  // I think this root is correct
   
   // Now we calculate the error on the quadratic formula above
   // See thesis for derivation of this calculation
-  GEGM_stat_err = sqrt( pow(-1*C / (A*sqrt(B*B - 4*A*C)) + (B - sqrt(B*B - 4*A*C)) / (2*A*A),2) * e*e/(t*t) + 1.0 / (B*B - 4*A*C) ) * A_stat_err;
-  GEGM_sys_err = sqrt( pow(-1*C / (A*sqrt(B*B - 4*A*C)) + (B - sqrt(B*B - 4*A*C)) / (2*A*A),2) * e*e/(t*t) + 1.0 / (B*B - 4*A*C) ) * A_sys_err;
+  GEGMn_stat_err = sqrt( pow(-1*C / (A*sqrt(B*B - 4*A*C)) + (B - sqrt(B*B - 4*A*C)) / (2*A*A),2) * e*e/(t*t) + 1.0 / (B*B - 4*A*C) ) * A_stat_err;
+  GEGMn_sys_err = sqrt( pow(-1*C / (A*sqrt(B*B - 4*A*C)) + (B - sqrt(B*B - 4*A*C)) / (2*A*A),2) * e*e/(t*t) + 1.0 / (B*B - 4*A*C) ) * A_sys_err;
 
-  return GEGM;
+  return GEGMn;
 }
 
 
@@ -171,7 +187,7 @@ void GetGEGMFromA_old(double A){
     exit(0);
   }
 
-  GEGM = gamma;   //Save the form factor result
+  GEGMn = gamma;   //Save the form factor result
 }
 
 
@@ -419,21 +435,19 @@ void analyzed_info::SetAvgPol(){
       double weight = Asym_runs.N_raw_p + Asym_runs.N_raw_m;
       
       weightsum += weight;
+
       weightHe3vals += weight*Asym_runs.P_He3;
       weightBeamvals += weight*Asym_runs.P_beam[0];
 
-      // Hunter says to use 5% error for polarization for now
-      // This will be updated later to a more accurate number
-      weightHe3errs += weight*Asym_runs.P_He3*0.05;
+      weightHe3errs += weight*Asym_runs.P_He3_err;
       weightBeamerrs += weight*Asym_runs.P_beam[1];
-      
     }
     
     P_He3_avg = weightHe3vals / weightsum;
     P_beam_avg = weightBeamvals / weightsum;
     P_He3_avg_err = weightHe3errs / weightsum;
     P_beam_avg_err = weightBeamerrs / weightsum;
-    
+
   }
 
 
@@ -488,7 +502,8 @@ void analyzed_info::CalcAsymVals(){
   
   // Calculate the fractions
   f_p = 1.0*N_proton / Sigma_raw_tot;
-  f_FSI = 0; // Set this to 0 for now
+  f_FSI = 0.0287; // This value comes from GEN-I
+  f_FSI_err = 0.0026;   // This value comes from GEN-I
   // The rest are calculated in previous scripts
 
   f_n = 1 - f_p - f_acc - f_N2 - f_pion - f_in - f_FSI;
@@ -496,7 +511,8 @@ void analyzed_info::CalcAsymVals(){
   // Calculate the asymmetry values
   A_raw = Delta_raw / Sigma_raw;
   A_raw_err = CalcAsymErr(N_raw_p, N_raw_m);
-  A_FSI = 0; // Set to 0 for now
+  A_FSI = 0.0003; // Number comes from GEN-I
+  A_FSI_err = 0.0005; // Number comes from GEN-I
   
   SetAvgPol();  // Get avg polarization for proton asym
 
@@ -506,21 +522,12 @@ void analyzed_info::CalcAsymVals(){
   //A_p += T_avg[i] * pow(GetGEGMFromTheory(0,Q2_avg),i);
 
   // Calculate proton asym from averages
-  double A_p_phys = GetAFromQ2(0,Q2_avg);
+  GetAFromQ2(0, Q2_avg, A_p_phys, A_p_phys_err);
+
   A_p = P_He3_avg*P_beam_avg*P_p*A_p_phys;
-
-  ////// Proton systematic errors ////////////////////////////////////
-  double R = GetGEGMFromTheory(0, Q2_avg); // Get GE/GM from parameterization
-  double a = epsilon_avg / tau_avg;
-  double b = sqrt(2*epsilon_avg*(1-epsilon_avg)/tau_avg)*Px_avg;
-  double c = sqrt(1 - epsilon_avg*epsilon_avg)*Pz_avg;
-
-  double R_err = R*( 0.01 + 0.01 ); //Assume 1% errors on parameterizations, to be updated later
-  double A_p_phys_err = (2*R*A_p_phys + b)/(1 + a*R*R) * R_err;
   A_p_err = A_p * sqrt( pow(A_p_phys_err/A_p_phys,2) + pow(P_beam_avg_err/P_beam_avg,2) + pow(P_He3_avg_err/P_He3_avg,2) );
   
   f_p_err = CalcFractionErr(N_proton, Sigma_raw_tot);
-  f_FSI_err = 0;   // Set to 0 for now
   //!!!! The rest are calculated in previous scripts !!!!!!!!!///////
   
   // Run summation to get total asymmetry
@@ -559,20 +566,28 @@ void analyzed_info::CalcAsymVals(){
   // Here we separate parts of the systematic error because they are long //////
 
   // Asymmetry systematic error squared
-  double A_sys_err = (f_acc*f_acc*A_acc_err*A_acc_err + f_pion*f_pion*A_pion_err*A_pion_err + f_in*f_in*A_in_err*A_in_err) / pow(P_He3_avg*P_beam_avg*P_n*f_n,2);
+  double A_sys_err = (f_acc*f_acc*A_acc_err*A_acc_err + f_pion*f_pion*A_pion_err*A_pion_err + f_in*f_in*A_in_err*A_in_err + f_p*f_p*A_p_err*A_p_err + f_FSI*f_FSI*A_FSI_err*A_FSI_err) / pow(P_He3_avg*P_beam_avg*P_n*f_n,2);
+  
   // Fraction systematic error squared
-  double f_sys_err = pow(A_phys/f_n*f_N2_err,2) + pow(CalcAsymFractionErr(A_acc, f_acc_err),2) + pow(CalcAsymFractionErr(A_pion, f_pion_err),2) + pow(CalcAsymFractionErr(A_in, f_in_err),2);
+  double f_sys_err = pow(A_phys/f_n*f_N2_err,2) + pow(CalcAsymFractionErr(A_acc, f_acc_err),2) + pow(CalcAsymFractionErr(A_pion, f_pion_err),2) + pow(CalcAsymFractionErr(A_in, f_in_err),2) + pow(CalcAsymFractionErr(A_p, f_p_err),2) + pow(CalcAsymFractionErr(A_FSI, f_FSI_err),2);
+
   // Polarization systematic error squared
   double P_sys_err = A_phys*A_phys * pow(P_He3_avg_err/P_He3_avg,2) + pow(P_beam_avg_err/P_beam_avg,2);
 
   // Total systematic error adding up the three parts above
   A_phys_sys_err = sqrt(A_sys_err + f_sys_err + P_sys_err);
-
+  
   // The final error is the statistical + systematic
   A_phys_tot_err = sqrt(A_phys_stat_err*A_phys_stat_err + A_phys_sys_err*A_phys_sys_err);
 
+  // Get final GE/GM and GE
   GetGEGMFromA(A_phys, A_phys_stat_err, A_phys_sys_err); // Get form factor result
-  
+
+  GetGMNFit(Q2_avg,GMn,GMn_err);  // Get GMn from parameterization
+
+  GEn = GEGMn * GMn;
+  GEn_stat_err = sqrt(pow(GEGMn*GMn_err,2) + pow(GMn*GEGMn_stat_err,2));
+  GEn_sys_err = sqrt(pow(GEGMn*GMn_err,2) + pow(GMn*GEGMn_sys_err,2));
 }
 
 

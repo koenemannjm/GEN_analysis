@@ -36,8 +36,8 @@ namespace Utilities {
     double W2max;
     double dymin;
     double dymax;
-    vector<double> coin_time_cut;
-    double Nsigma_coin_time;
+    double coin_min;
+    double coin_max;
     string rootfile_dir;
     vector<int> runnums;
     int nruns;
@@ -72,7 +72,7 @@ namespace Utilities {
   TDatime SetTime(string time_str);
   KinConf LoadKinConfig(TString config_file, bool is_data);
   TChain *LoadRawRootFiles(KinConf kin_info, bool is_data);
-  analyzed_tree *LoadAnalyzedRootFiles(KinConf kin_info, bool is_data, bool is_reduced);
+  analyzed_tree *LoadAnalyzedRootFiles(KinConf kin_info, bool is_data, bool is_reduced, bool is_pion);
 
 }
 

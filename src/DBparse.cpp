@@ -3,21 +3,22 @@
 
 namespace DBparse {
 
-
   void DB_load(DBInfo &request){
-
-    TString DB_dir = "/w/halla-scshelf2102/sbs/jeffas/GEN_analysis/DB/"; 
 
     for(int ivar = 0; ivar < request.var_req.size(); ivar++){
       DBrequest var_info = request.var_req[ivar];
       bool found_var = false;
 
+      TString DIR = DB_dir;
+
       auto it = DBFileMap.find(var_info.var_names);
       TString file = it->second;
-      if(it->first == "Asymmetry Correction")
-	file = request.cfg + "_" + file;
+      if(it->first == "Asymmetry Correction"){
+	file = Form(request.cfg + "_" + file + "_W2_%g_%g_dy_%g.csv",request.W2min,request.W2max,request.dymax);
+	DIR = DB_corr_dir;
+      }
       
-      fstream file_csv; file_csv.open(DB_dir + file);
+      fstream file_csv; file_csv.open(DIR + file);
       
       // Here we check that the DB files are there
       if (it == DBFileMap.end()) { // This is not in the list of DB files
@@ -135,4 +136,27 @@ namespace DBparse {
     }
   }
 
+
+  void DB_SetCorrections(DBInfo &DBInfo){
+
+    TString file = Form(DBInfo.cfg + "_corr_W2_%g_%g_dy_%g.csv",DBInfo.W2min,DBInfo.W2max,DBInfo.dymax);
+
+    ofstream file_csv; file_csv.open(DB_corr_dir + file);
+
+    file_csv<<"#time accidentals,Asymmetry, Asymmetry Err, Fraction, Fraction Err"<<endl;
+    file_csv<<Form("time accidentals,%.4f,%.4f,%.4f,%.4f",DBInfo.AccidentalAsymmetry,DBInfo.AccidentalAsymmetryErr,DBInfo.AccidentalFraction,DBInfo.AccidentalFractionErr)<<endl;
+    file_csv<<endl;
+
+    file_csv<<"#Nitrogen, Fraction, Fraction Err"<<endl;
+    file_csv<<Form("Nitrogen,%.4f,%.4f",DBInfo.NitrogenFraction,DBInfo.NitrogenFractionErr)<<endl;
+    file_csv<<endl;
+ 
+    file_csv<<"#pion,Asymmetry, Asymmetry Err, Fraction, Fraction Err"<<endl;
+    file_csv<<Form("pion,%.4f,%.4f,%.4f,%.4f",DBInfo.PionAsymmetry,DBInfo.PionAsymmetryErr,DBInfo.PionFraction,DBInfo.PionFractionErr)<<endl;
+    file_csv<<endl;
+ 
+    file_csv<<"#Inelastic,Asymmetry, Asymmetry Err, Fraction, Fraction Err"<<endl;
+    file_csv<<Form("Inelastic,%.4f,%.4f,%.4f,%.4f",DBInfo.InelasticAsymmetry,DBInfo.InelasticAsymmetryErr,DBInfo.InelasticFraction,DBInfo.InelasticFractionErr)<<endl;
+  }
+  
 }

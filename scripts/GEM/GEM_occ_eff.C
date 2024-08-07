@@ -1,11 +1,24 @@
+//////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////
+//   Created by Sean Jeffas, sj9ry@virginia.edu
+//   Last Modified August 8, 2024
+//
+//
+//   The purpose of this script is to calculate the occupancy
+//   and efficiency plots for the GEMs for the GEn-II
+//   experiment.
+//
+//////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////
 
 const int nQ2 = 3;
 const int nlayers = 5;
 const int nmodules = 8;
 
-double Q2_list[nQ2] = {3.0,6.8,9.8};
+TString Q2_list[nQ2] = {"Kin2","Kin3","Kin4"};
 TString kin_list[nQ2] = {"GEN2","GEN3","GEN4"};
 int runs[nQ2] = {2164,2566,3854};
+TString runs_all[nQ2] = {"*","*","*"};
 double curr_array[nQ2] = {45,45,45};
 double GEM_eff[nQ2][nlayers];
 
@@ -160,14 +173,17 @@ bool IsInActiveArea(int module, TVector3 point, int iQ2){
 }
 
 
-void occupancy_plots_new(){
+void GEM_occ_eff(){
 
   double U_occu[nQ2][nlayers];
   double U_err[nQ2][nlayers];
   double efficiency[nQ2][nlayers];
 
+  // If true then analyze all data from the entire kinematics (will take a long time)
+  bool full_kin = false; 
 
   TString rootdir = "/cache/halla/sbs/prod/GEnII/pass1/";
+  TString rootdir_full = "/lustre19/expphy/volatile/halla/sbs/jeffas/GEN_root/eff_test/";
 
   for(int iQ2=0; iQ2 < nQ2; iQ2++){
     
@@ -194,10 +210,18 @@ void occupancy_plots_new(){
     TChain *C = new TChain("T");
     TChain *Tscaler = new TChain("TSsbs");
 
-    for(int iseg=0;iseg < 100;iseg++){
-      C->Add(Form(rootdir + kin_list[iQ2] + "/He3/rootfiles/*%i*seg%i_%i*",runs[iQ2],iseg,iseg));    
-      Tscaler->Add(Form(rootdir + kin_list[iQ2] + "/He3/rootfiles/*%i*seg%i_%i*",runs[iQ2],iseg,iseg));    
+    if(full_kin){
+      C->Add(rootdir_full + kin_list[iQ2] + "/" + runs_all[iQ2]);    
+      Tscaler->Add(rootdir_full + kin_list[iQ2] + "/" + runs_all[iQ2]);
     }
+    else{
+      //This is necessary to get the events in the proper order
+      for(int iseg=0;iseg < 100;iseg++){
+      	C->Add(Form(rootdir + kin_list[iQ2] + "/He3/rootfiles/*%i*seg%i_%i*",runs[iQ2],iseg,iseg));    
+	Tscaler->Add(Form(rootdir + kin_list[iQ2] + "/He3/rootfiles/*%i*seg%i_%i*",runs[iQ2],iseg,iseg));
+      }
+    }
+    
 
     C->SetBranchStatus("*",0);
     Tscaler->SetBranchStatus("*",0);
@@ -255,70 +279,114 @@ void occupancy_plots_new(){
     int mod_didhit[nlayers] = {0};
     int mod_shouldhit[nlayers] = {0};
     bool beam_in_range = false;
-    
-    while(Tscaler->GetEntry(nevent_scaler++)){
-      nevent_end = -1; //Initialize end to nonsense number
-    
-      if(abs(beam_curr - curr_array[iQ2]) < 2){ //Check if beam curr in range
-	//start event count if this is the first event in curr range
-	if(!beam_in_range) nevent_start = beam_evnum; 
-	beam_in_range = true;
-      } 
-      else { //Check if beam curr not in range
-	// If the curr just dropped out then record this as the end event count
-	if(beam_in_range){
-	  Tscaler->GetEntry(nevent_scaler - 2); // Go back one event 
-	  nevent_end = beam_evnum;
-	  Tscaler->GetEntry(nevent_scaler - 1); // Set back to correct 
-	}
-	beam_in_range = false;
-      }
-      
-      if(nevent_end > nevent_start){ //If we have a range now we look at data
-	while(C->GetEntry(nevent++) && nevent < set_max_events){
 
-	  bool didhit[nmodules] = {false};
-	  bool shouldhit[nmodules] = {false};	  
-	  
-	  if(evnum > nevent_end){ //break if we are above the event range
-	    nevent--;
-	    break;
-	  }
-	  // Only anlyze events in range
-	  if(evnum > nevent_start && evnum < nevent_end){ 
-	    if(tr_n == 1 && ps_e > 0.15 && abs(tr_vz[0]) < 0.27){ // Physics cuts
-	      for(int ilayer = 0; ilayer < nlayers; ilayer++)
-		hist[ilayer]->Fill(nstrips[ilayer]);
-	      
-	      TLorentzVector Peprime(px[0],py[0],pz[0],p[0]);
-      
-	      TVector3 track_origin(tr_x[0],tr_y[0],0.0);
-	      TVector3 track_dir(tr_xp[0],tr_yp[0],1.0);
-      
-	      for(int ihit = 0; ihit < hit_n; ihit++)
-		didhit[(int)hit_mod[ihit]] = true;
-      
-      
-	      for(int imod = 0; imod < nmodules; imod++){
-		TVector3 Intersect = TrackIntersect(imod,track_origin,track_dir,iQ2);
-		bool isinactivearea = IsInActiveArea(imod,Intersect,iQ2);
-	
-		if(isinactivearea) shouldhit[imod] = true;
+    int ncount = 0;
 
-		int layer;
-		if(imod >= 4) layer = 4;
-		else layer = imod;
+    if(full_kin){
+      while(C->GetEntry(nevent++)){
 
-		if(didhit[imod]) mod_didhit[layer]++;
-		if(shouldhit[imod]) mod_shouldhit[layer]++;
-	      } 
+	bool didhit[nmodules] = {false};
+	bool shouldhit[nmodules] = {false};	  
 	    
-	    } //End if statement on good physics cuts
-	  } //End if statement on good beam current
-	} //End loop over data tree
-      } //End if statement on good beam current
-    } //End loop over scaler tree
+	if(ps_e > 0.20 && abs(tr_vz[0]) < 0.27){ // Physics cuts
+	  ncount++;
 
+	  for(int ilayer = 0; ilayer < nlayers; ilayer++)
+	    hist[ilayer]->Fill(nstrips[ilayer]);
+	      
+	  TLorentzVector Peprime(px[0],py[0],pz[0],p[0]);
+      
+	  TVector3 track_origin(tr_x[0],tr_y[0],0.0);
+	  TVector3 track_dir(tr_xp[0],tr_yp[0],1.0);
+      
+	  for(int ihit = 0; ihit < hit_n; ihit++)
+	    didhit[(int)hit_mod[ihit]] = true;
+      
+      
+	  for(int imod = 0; imod < nmodules; imod++){
+	    TVector3 Intersect = TrackIntersect(imod,track_origin,track_dir,iQ2);
+	    bool isinactivearea = IsInActiveArea(imod,Intersect,iQ2);
+	
+	    if(isinactivearea) shouldhit[imod] = true;
+
+	    int layer;
+	    if(imod >= 4) layer = 4;
+	    else layer = imod;
+
+	    if(didhit[imod]) mod_didhit[layer]++;
+	    if(shouldhit[imod]) mod_shouldhit[layer]++;
+	  }
+        
+	} //End if statement on good physics cuts
+      } //End loop over data tree
+    }
+    else {
+      while(Tscaler->GetEntry(nevent_scaler++)){
+	nevent_end = -1; //Initialize end to nonsense number
+
+	if(abs(beam_curr - curr_array[iQ2]) < 2){ //Check if beam curr in range
+	  //start event count if this is the first event in curr range
+	  if(!beam_in_range) nevent_start = beam_evnum; 
+	  beam_in_range = true;
+	} 
+	else { //Check if beam curr not in range
+	  // If the curr just dropped out then record this as the end event count
+	  if(beam_in_range){
+	    Tscaler->GetEntry(nevent_scaler - 2); // Go back one event 
+	    nevent_end = beam_evnum;
+	    Tscaler->GetEntry(nevent_scaler - 1); // Set back to correct 
+	  }
+	  beam_in_range = false;
+	}
+    
+	if(nevent_end > nevent_start){ //If we have a range now we look at data
+	  while(C->GetEntry(nevent++)){
+
+	    bool didhit[nmodules] = {false};
+	    bool shouldhit[nmodules] = {false};	  
+	  
+	    if(evnum > nevent_end){ //break if we are above the event range
+	      nevent--;
+	      break;
+	    }
+	    // Only anlyze events in range
+	    if(evnum > nevent_start && evnum < nevent_end){
+	      if(ps_e > 0.20 && abs(tr_vz[0]) < 0.27){ // Physics cuts
+		ncount++;
+
+		for(int ilayer = 0; ilayer < nlayers; ilayer++)
+		  hist[ilayer]->Fill(nstrips[ilayer]);
+	      
+		TLorentzVector Peprime(px[0],py[0],pz[0],p[0]);
+      
+		TVector3 track_origin(tr_x[0],tr_y[0],0.0);
+		TVector3 track_dir(tr_xp[0],tr_yp[0],1.0);
+      
+		for(int ihit = 0; ihit < hit_n; ihit++)
+		  didhit[(int)hit_mod[ihit]] = true;
+      
+      
+		for(int imod = 0; imod < nmodules; imod++){
+		  TVector3 Intersect = TrackIntersect(imod,track_origin,track_dir,iQ2);
+		  bool isinactivearea = IsInActiveArea(imod,Intersect,iQ2);
+	
+		  if(isinactivearea) shouldhit[imod] = true;
+
+		  int layer;
+		  if(imod >= 4) layer = 4;
+		  else layer = imod;
+
+		  if(didhit[imod]) mod_didhit[layer]++;
+		  if(shouldhit[imod]) mod_shouldhit[layer]++;
+		} 
+	    
+	      } //End if statement on good physics cuts
+	    } //End if statement on good beam current
+	  } //End loop over data tree
+	} //End if statement on good beam current
+      } //End loop over scaler tree
+    }
+    
     for(int ilayer = 0; ilayer < nlayers; ilayer++){
       TF1 *fit = new TF1("fit","gaus");
 	  
@@ -349,20 +417,27 @@ void occupancy_plots_new(){
   for(int iQ2 = 0; iQ2 < nQ2; iQ2++){
   
     Q2_eff[iQ2] = probability(3,iQ2) + probability(4,iQ2) + probability(5,iQ2);
-    cout<<iQ2<<" "<<Q2_eff[iQ2]<<endl;
+    cout<<Q2_list[iQ2]<<" "<<Q2_eff[iQ2]<<endl;
 
     icolor++;
 
     g_eff[iQ2] = new TGraph(nlayers,layer_list,GEM_eff[iQ2]);
-    g_eff[iQ2]->SetTitle("GEN GEM Layer Efficiency;Layer # ;Efficiency");
-    g_eff[iQ2]->SetMarkerStyle(8);
+    g_eff[iQ2]->SetTitle("High Current Layer Efficiency;Layer # ;Efficiency");
+    if(iQ2 == 0) g_eff[iQ2]->SetMarkerStyle(20);
+    if(iQ2 == 1) g_eff[iQ2]->SetMarkerStyle(21);
+    if(iQ2 == 2) g_eff[iQ2]->SetMarkerStyle(22);
+    g_eff[iQ2]->SetMarkerSize(1);
     g_eff[iQ2]->SetMarkerColor(icolor);
     g_eff[iQ2]->SetLineColor(icolor);
-    legend->AddEntry(g_eff[iQ2],Form("Q^{2} = %g",Q2_list[iQ2]),"p");
+    legend->AddEntry(g_eff[iQ2],Q2_list[iQ2],"p");
 
     g_occu[iQ2] = new TGraphErrors(nlayers,layer_list,U_occu[iQ2],0,U_err[iQ2]);
-    g_occu[iQ2]->SetTitle("GEN GEM Layer Occupancy;Layer # ;Occupancy");
+    g_occu[iQ2]->SetTitle("High Current Layer Occupancy;Layer # ;Occupancy");
     g_occu[iQ2]->SetMarkerStyle(8);
+    if(iQ2 == 0) g_occu[iQ2]->SetMarkerStyle(20);
+    if(iQ2 == 1) g_occu[iQ2]->SetMarkerStyle(21);
+    if(iQ2 == 2) g_occu[iQ2]->SetMarkerStyle(22);
+    g_occu[iQ2]->SetMarkerSize(1);
     g_occu[iQ2]->SetMarkerColor(icolor);
     g_occu[iQ2]->SetLineColor(icolor);
 

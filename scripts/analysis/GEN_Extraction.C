@@ -1,7 +1,7 @@
 //////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////
 //   Created by Sean Jeffas, sj9ry@virginia.edu
-//   Last Modified March 4, 2024
+//   Last Modified August 7, 2024
 //
 //
 //   The purpose of this script is to calculate the asymmetry
@@ -41,13 +41,11 @@ void getDB(TString cfg){
 }
 
 // Input types: GEN2, GEN3, GEN4, GEN4b
-void Full_GEN_Extraction(TString cfg){
+void GEN_Extraction(TString cfg, double W2mincut = -100, double W2maxcut = -100, double dycut = -100){
 
   gErrorIgnoreLevel = kError; // Ignores all ROOT warnings
   gStyle->SetOptStat(0);
   gStyle->SetOptFit(0);
-
-  getDB(cfg);
 
   // Load the kinematics and data
   TString jmgr_file = "../../config/" + cfg + "_He3.cfg";
@@ -61,22 +59,30 @@ void Full_GEN_Extraction(TString cfg){
   double dy_bg_max = kin_info.dymax;
 
   vector<double> dx_n = kin_info.dx_n;
-  double Nsigma_dx_n = kin_info.Nsigma_dx_n;
   vector<double> dy_n = kin_info.dy_n;
-  double Nsigma_dy_n = kin_info.Nsigma_dy_n;
   double dxmin = dx_n[0] - dx_n[1];
   double dxmax = dx_n[0] + dx_n[1];
   double dymin = dy_n[0] - dy_n[1];
   double dymax = dy_n[0] + dy_n[1];
 
+  if(W2mincut > -10 && W2maxcut > -10 && dycut > -10){
+    W2min = W2mincut;
+    W2max = W2maxcut;
+    dymax = dycut;
+    dymin = -1*dymax;
+    dxmin = dymin;
+    dxmax = dymax;
+  }
+  
+  DBInfo.W2min = W2min;
+  DBInfo.W2max = W2max;
+  DBInfo.dymax = dymax;
+  getDB(cfg);
+
   int IHWP_Flip = kin_info.IHWP_Flip;
 
-  double coin_min = kin_info.coin_time_cut[0] - kin_info.Nsigma_coin_time*kin_info.coin_time_cut[1];
-  double coin_max = kin_info.coin_time_cut[0] + kin_info.Nsigma_coin_time*kin_info.coin_time_cut[1];
-  
-  // These cuts are for accidental background
-  double coin_bg_min = coin_max + 7*kin_info.coin_time_cut[1];
-  double coin_bg_max = coin_bg_min + 2*kin_info.Nsigma_coin_time*kin_info.coin_time_cut[1];
+  double coin_min = kin_info.coin_min;
+  double coin_max = kin_info.coin_max;
 
   // Set the analyzed tree data
   analyzed_tree *T_data = Utilities::LoadAnalyzedRootFiles(kin_info,1,0);
@@ -118,8 +124,9 @@ void Full_GEN_Extraction(TString cfg){
   int nevent = 0;
   int maxevent = T_data->fChain->GetEntries(); // Used to loop through the tree
   analyzed_info *Asym_total = new analyzed_info(); // Object for total asymmetry
-
+  
   while(nevent < maxevent){
+    //while(nevent < 5000000){
     T_data->GetEntry(nevent++);  //Get data for one event
 
     ////// Define all the cuts we will use on the data  ////////////////
@@ -273,21 +280,38 @@ void Full_GEN_Extraction(TString cfg){
   cout<<"-------------------- Result Summary --------------------"<<endl;
   cout<<Form("Q2 = %.2f",Q2_avg)<<endl;
   cout<<"N QE Events = "<<Asym_total->N_raw_p + Asym_total->N_raw_m<<endl;
+  cout<<"N+ Events = "<<Asym_total->N_raw_p<<endl;
+  cout<<"N- Events = "<<Asym_total->N_raw_m<<endl;
   cout<<Form("A_phys = %.4f +/- %.4f +/- %.4f (result +/- stat +/- sys)",Asym_total->A_phys,Asym_total->A_phys_stat_err,Asym_total->A_phys_sys_err)<<endl;
-  cout<<Form("GE/GM = %.4f +/- %.4f +/- %.4f (result +/- stat +/- sys)",GEGM,GEGM_stat_err,GEGM_sys_err)<<endl;
+  cout<<Form("GE/GM = %.4f +/- %.4f +/- %.4f (result +/- stat +/- sys)",GEGMn,GEGMn_stat_err,GEGMn_sys_err)<<endl;
+  cout<<Form("GE = %.4f +/- %.4f +/- %.4f (result +/- stat +/- sys)",GEn,GEn_stat_err,GEn_sys_err)<<endl;
+  cout<<Form("GM = %.4f +/- %.4f ",GMn,GMn_err)<<endl;
   
   cout<<"\n";
   cout<<"-------------------- Detailed Results --------------------"<<endl;
+  cout<<"------------------ Cuts ------------------"<<endl;
+  cout<<Form("%g < W2 < %g",W2min,W2max)<<endl;
+  cout<<Form("%g < dx < %g",dxmin,dxmax)<<endl;
+  cout<<Form("%g < dy < %g",dymin,dymax)<<endl;
   cout<<"------------- Polarizations -------------"<<endl;
   cout<<Form("P He3 Avg = %.4f +/- %.4f",P_He3_avg,P_He3_avg_err)<<endl;
   cout<<Form("P Beam Avg = %.4f +/- %.4f",P_beam_avg,P_beam_avg_err)<<endl;
   cout<<"P Neutron = "<<P_n<<endl;
+  cout<<"--------------- Kinematics ---------------"<<endl;
+  cout<<Form("tau = %.4f",tau_avg)<<endl;
+  cout<<Form("epsilon = %.4f",epsilon_avg)<<endl;
+  cout<<Form("Px = %.4f",Px_avg)<<endl;
+  cout<<Form("Pz = %.4f",Pz_avg)<<endl;
+  cout<<Form("A quadratic = %.4f",A_quad)<<endl;
+  cout<<Form("B quadratic = %.4f",B_quad)<<endl;
+  cout<<Form("C quadratic = %.4f",C_quad)<<endl;
   cout<<"------------- Asymmetries -------------"<<endl;
   cout<<Form("A Raw = %.4f +/- %.4f",Asym_total->A_raw,Asym_total->A_raw_err)<<endl;
   cout<<Form("A Accidetal = %.4f +/- %.4f",Asym_total->A_acc,Asym_total->A_acc_err)<<endl;
   cout<<Form("A Pion = %.4f +/- %.4f",Asym_total->A_pion,Asym_total->A_pion_err)<<endl;
   cout<<Form("A Proton = %.4f +/- %.4f",Asym_total->A_p,Asym_total->A_p_err)<<endl;
   cout<<Form("A Inelastic = %.4f +/- %.4f",Asym_total->A_in,Asym_total->A_in_err)<<endl;
+  cout<<Form("A FSI = %.4f +/- %.4f",Asym_total->A_FSI,Asym_total->A_FSI_err)<<endl;
   cout<<"------------- Fractions -------------"<<endl;
   cout<<Form("F neutron = %.4f",Asym_total->f_n)<<endl;
   cout<<Form("F Accidetal = %.4f +/- %.4f",Asym_total->f_acc,Asym_total->f_acc_err)<<endl;
@@ -295,8 +319,13 @@ void Full_GEN_Extraction(TString cfg){
   cout<<Form("F Pion = %.4f +/- %.4f",Asym_total->f_pion,Asym_total->f_pion_err)<<endl;
   cout<<Form("F Proton = %.4f +/- %.4f",Asym_total->f_p,Asym_total->f_p_err)<<endl;
   cout<<Form("F Inelastic = %.4f +/- %.4f",Asym_total->f_in,Asym_total->f_in_err)<<endl;
-
-
+  cout<<Form("F FSI = %.4f +/- %.4f",Asym_total->f_FSI,Asym_total->f_FSI_err)<<endl;
+  cout<<"----------------- Proton Info -----------------"<<endl;
+  cout<<Form("N proton = %i",Asym_total->N_proton)<<endl;
+  cout<<Form("GE/GM proton = %.4f +/- %.4f",GEGMp,GEGMp_err)<<endl;
+  cout<<Form("A Proton = %.4f +/- %.4f",Asym_total->A_p_phys,Asym_total->A_p_phys_err)<<endl;
+  cout<<"P proton = "<<P_p<<endl;
+  
   TString plot_dir = "../../plots/";
   TString plot_name = "Asymmetry_Full_" + cfg + ".pdf";
 
@@ -305,7 +334,7 @@ void Full_GEN_Extraction(TString cfg){
   c1->Print(outputfile);
 
   TString text_dir = "../outfiles/asym_results/";
-  TString text_name = "Asymmetry_" + cfg + ".txt";
+  TString text_name = Form("Asymmetry_" + cfg + "_W2_%g_%g_dy_%g.txt",W2min,W2max,dymax);
 
   TString outputfile_text = text_dir + text_name;
   
@@ -315,21 +344,37 @@ void Full_GEN_Extraction(TString cfg){
   textfile<<"-------------------- Result Summary --------------------"<<endl;
   textfile<<Form("Q2 = %.2f",Q2_avg)<<endl;
   textfile<<"N QE Events = "<<Asym_total->N_raw_p + Asym_total->N_raw_m<<endl;
+  textfile<<"N+ Events = "<<Asym_total->N_raw_p<<endl;
+  textfile<<"N- Events = "<<Asym_total->N_raw_m<<endl;
   textfile<<Form("A_phys = %.4f +/- %.4f +/- %.4f (result +/- stat +/- sys)",Asym_total->A_phys,Asym_total->A_phys_stat_err,Asym_total->A_phys_sys_err)<<endl;
-  textfile<<Form("GE/GM = %.4f +/- %.4f +/- %.4f (result +/- stat +/- sys)",GEGM,GEGM_stat_err,GEGM_sys_err)<<endl;
-  
+  textfile<<Form("GE/GM = %.4f +/- %.4f +/- %.4f (result +/- stat +/- sys)",GEGMn,GEGMn_stat_err,GEGMn_sys_err)<<endl;
+  textfile<<Form("GE = %.4f +/- %.4f +/- %.4f (result +/- stat +/- sys)",GEn,GEn_stat_err,GEn_sys_err)<<endl;
+  textfile<<Form("GM = %.4f +/- %.4f ",GMn,GMn_err)<<endl;
   textfile<<"\n";
   textfile<<"-------------------- Detailed Results --------------------"<<endl;
+  textfile<<"------------------ Cuts ------------------"<<endl;
+  textfile<<Form("%g < W2 < %g",W2min,W2max)<<endl;
+  textfile<<Form("%g < dx < %g",dxmin,dxmax)<<endl;
+  textfile<<Form("%g < dy < %g",dymin,dymax)<<endl;
   textfile<<"------------- Polarizations -------------"<<endl;
   textfile<<Form("P He3 Avg = %.4f +/- %.4f",P_He3_avg,P_He3_avg_err)<<endl;
   textfile<<Form("P Beam Avg = %.4f +/- %.4f",P_beam_avg,P_beam_avg_err)<<endl;
   textfile<<"P Neutron = "<<P_n<<endl;
+  textfile<<"--------------- Kinematics ---------------"<<endl;
+  textfile<<Form("tau = %.4f",tau_avg)<<endl;
+  textfile<<Form("epsilon = %.4f",epsilon_avg)<<endl;
+  textfile<<Form("Px = %.4f",Px_avg)<<endl;
+  textfile<<Form("Pz = %.4f",Pz_avg)<<endl;
+  textfile<<Form("A quadratic = %.4f",A_quad)<<endl;
+  textfile<<Form("B quadratic = %.4f",B_quad)<<endl;
+  textfile<<Form("C quadratic = %.4f",C_quad)<<endl;
   textfile<<"------------- Asymmetries -------------"<<endl;
   textfile<<Form("A Raw = %.4f +/- %.4f",Asym_total->A_raw,Asym_total->A_raw_err)<<endl;
   textfile<<Form("A Accidetal = %.4f +/- %.4f",Asym_total->A_acc,Asym_total->A_acc_err)<<endl;
   textfile<<Form("A Pion = %.4f +/- %.4f",Asym_total->A_pion,Asym_total->A_pion_err)<<endl;
   textfile<<Form("A Proton = %.4f +/- %.4f",Asym_total->A_p,Asym_total->A_p_err)<<endl;
   textfile<<Form("A Inelastic = %.4f +/- %.4f",Asym_total->A_in,Asym_total->A_in_err)<<endl;
+  textfile<<Form("A FSI = %.4f +/- %.4f",Asym_total->A_FSI,Asym_total->A_FSI_err)<<endl;
   textfile<<"------------- Fractions -------------"<<endl;
   textfile<<Form("F neutron = %.4f",Asym_total->f_n)<<endl;
   textfile<<Form("F Accidetal = %.4f +/- %.4f",Asym_total->f_acc,Asym_total->f_acc_err)<<endl;
@@ -337,6 +382,7 @@ void Full_GEN_Extraction(TString cfg){
   textfile<<Form("F Pion = %.4f +/- %.4f",Asym_total->f_pion,Asym_total->f_pion_err)<<endl;
   textfile<<Form("F Proton = %.4f +/- %.4f",Asym_total->f_p,Asym_total->f_p_err)<<endl;
   textfile<<Form("F Inelastic = %.4f +/- %.4f",Asym_total->f_in,Asym_total->f_in_err)<<endl;
+  textfile<<Form("F FSI = %.4f +/- %.4f",Asym_total->f_FSI,Asym_total->f_FSI_err)<<endl;
   
   textfile.close();
 

@@ -2,7 +2,7 @@
 //////////////////////////////////////////////////////////
 //   Created by Provakar Datta
 //   Modified by Sean Jeffas, sj9ry@virginia.edu
-//   Last Modified July 7, 2023
+//   Last Modified August 7, 2024
 //
 //
 //   The purpose of this script is to take a configuraiton
@@ -308,8 +308,8 @@ int QuasiElastic_ana(const std::string configfilename, std::string filebase="../
   vector<double> dy_n = kin_info.dy_n;
   double Nsigma_cut_dx_n = kin_info.Nsigma_dx_n;
   double Nsigma_cut_dy_n = kin_info.Nsigma_dy_n;
-  vector<double> coin_time_cut = kin_info.coin_time_cut;
-  double Nsigma_coin_time = kin_info.Nsigma_coin_time;
+  double coin_min = kin_info.coin_min;
+  double coin_max = kin_info.coin_max;
   vector<double> hcal_active_area = cut::hcal_active_area_data(); // Exc. 1 blk from all 4 sides
   vector<double> hcal_safety_margin = cut::hcal_safety_margin(dx_p[1], dx_n[1], dy_p[1], hcal_active_area);
 
@@ -410,7 +410,7 @@ int QuasiElastic_ana(const std::string configfilename, std::string filebase="../
     T_coin_time = coin_time; 
     h_coin_time->Fill(coin_time);
       
-    coinCut = coin_time > coin_time_cut[0] - Nsigma_coin_time*coin_time_cut[1] && coin_time < coin_time_cut[0] + Nsigma_coin_time*coin_time_cut[1];
+    coinCut = coin_time > coin_min && coin_time < coin_max;
       
     //Grinch info
     T_grinch_track = grinch_track;

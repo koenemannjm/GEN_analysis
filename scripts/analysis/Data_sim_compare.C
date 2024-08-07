@@ -1,7 +1,7 @@
 //////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////
 //   Created by Sean Jeffas, sj9ry@virginia.edu
-//   Last Modified February 2, 2024
+//   Last Modified August 8, 2024
 //
 //
 //   The purpose of this script is to compare real data and
@@ -13,18 +13,42 @@
 #include "../../include/gen-ana.h"
 
 
+DBparse::DBInfo DBInfo;
+
+// Load database files
+void getDB(TString cfg){
+  
+  cout<<"Attempting to load DB File"<<endl;
+  cout<<"---------------------------------------------------------------"<<endl;
+
+   vector<DBparse::DBrequest> request = {
+    {"Beam Polarization","Beam Polarization values",1},
+    {"Helicity Quality","Helicity readback good? (0/1 = bad/good)",1},
+    {"Moller Quality","Moller measurements known? (0/1 = no/yes)",1},
+    {"Asymmetry Correction","All asymmetry correction parameters",1}
+  };
+
+  DBInfo.cfg = cfg;
+  DBInfo.var_req = request;
+
+  DB_load(DBInfo);
+
+  cout<<"---------------------------------------------------------------"<<endl;
+
+}
 
 void Data_sim_compare(TString cfg = "GEN2"){
 
   gStyle->SetOptStat(0);
   gStyle->SetOptFit(1);
 
+  getDB(cfg);
+
   distribution_fits *dists = new distribution_fits();
 
   if(cfg == "GEN2") dists->SetBgShapeOption("pol2");
   else dists->SetBgShapeOption("from data");
-
-  bool use_dy_cut = false;
+  dists->SetBgShapeOption("from data");
 
   TString jmgr_file = "../../config/" + cfg + "_He3.cfg";
 
@@ -36,10 +60,21 @@ void Data_sim_compare(TString cfg = "GEN2"){
   // elastic cut limits
   double W2min = kin_info.W2min;
   double W2max = kin_info.W2max;
-  double dymin = kin_info.dymin;
-  double dymax = kin_info.dymax;
+    
+  vector<double> dx_n = kin_info.dx_n;
+  double Nsigma_dx_n = kin_info.Nsigma_dx_n;
+  vector<double> dy_n = kin_info.dy_n;
+  double Nsigma_dy_n = kin_info.Nsigma_dy_n;
+  double dxmin = dx_n[0] - dx_n[1];
+  double dxmax = dx_n[0] + dx_n[1];
+  double dymin = dy_n[0] - dy_n[1];
+  double dymax = dy_n[0] + dy_n[1];
 
-  vector<double> coin_time_cut = kin_info.coin_time_cut; 
+  double dy_bg_min = kin_info.dymin;
+  double dy_bg_max = kin_info.dymax;
+
+  double coin_min = kin_info.coin_time_cut[0] - kin_info.Nsigma_coin_time*kin_info.coin_time_cut[1];
+  double coin_max = kin_info.coin_time_cut[0] + kin_info.Nsigma_coin_time*kin_info.coin_time_cut[1];
   
   
   /////Set the histograms
@@ -58,25 +93,38 @@ void Data_sim_compare(TString cfg = "GEN2"){
   TH1F *hdx_sim_n = new TH1F("hdx_sim_n","",nbins,xmin,xmax);
   TH1F *hdx_bg_data = new TH1F("hdx_bg_data","",nbins,xmin,xmax);
 
-  TCut W2Cut = Form("W2 > %g && W2 < %g",W2min,W2max);
-  TCut dyCut = Form("dy > %g && dy < %g",dymin,dymax);
-  //TCut coinCut = Form("abs(coin_time - %g) < %g*2",coin_time_cut[0],coin_time_cut[1]);
-  TCut coinCut = "coinCut";
   
-  TCut DataCut = W2Cut && coinCut;
-  TCut CutSimP = Form("(W2 > %g && W2 < %g && fnucl == 1) * weight",W2min,W2max);
-  TCut CutSimN = Form("(W2 > %g && W2 < %g && fnucl == 0) * weight",W2min,W2max);
+  TCut CutSimP = Form("(W2 > %g && W2 < %g && dy > %g && dy < %g && fnucl == 1) * weight",W2min,W2max,dymin,dymax);
+  TCut CutSimN = Form("(W2 > %g && W2 < %g && dy > %g && dy < %g && fnucl == 0) * weight",W2min,W2max,dymin,dymax);
   
-  if(use_dy_cut){
-    DataCut = DataCut && dyCut;
-    CutSimP = Form("(W2 > %g && W2 < %g && dy > %g && dy < %g && fnucl == 1) * weight",W2min,W2max,dymin,dymax);
-    CutSimN = Form("(W2 > %g && W2 < %g && dy > %g && dy < %g && fnucl == 0) * weight",W2min,W2max,dymin,dymax);
-  }
-
-  T_data->fChain->Draw("dx>>hdx_data",DataCut);
-  T_data->fChain->Draw("dx>>hdx_bg_data",coinCut && W2Cut && !dyCut);
   T_sim->fChain->Draw("dx>>hdx_sim_p",CutSimP);
   T_sim->fChain->Draw("dx>>hdx_sim_n",CutSimN);
+
+  int nevent = 0;
+  int maxevent = T_data->fChain->GetEntries();
+
+  while(nevent < maxevent){
+    T_data->GetEntry(nevent++);
+
+    ////// Define all the cuts we will use on the data  ////////////////
+    bool good_hel = DBInfo.GoodHel[T_data->runnum] && (T_data->helicity == -1 || T_data->helicity == 1);
+    bool good_moller = DBInfo.GoodMoller[T_data->runnum];
+    bool good_He3 = T_data->He3Pol > 0.01;
+    bool good_W2 = T_data->W2 > W2min && T_data->W2 < W2max;
+    bool dy_bg_cut = T_data->dy < dy_bg_min || T_data->dy > dy_bg_max;
+    bool good_dy_elas = T_data->dy > dymin && T_data->dy < dymax;
+    bool good_dx_elas = T_data->dx > dxmin && T_data->dx < dxmax;
+    bool good_coin_time = T_data->coin_time > coin_min && T_data->coin_time < coin_max;
+    //////////////////////////////////////////////////////////////////////+);  
+
+    if(!good_hel) continue;  //Remove events with bad helicity
+    if(!good_moller || !good_He3) continue;  //Remove runs with a bad moller measurement or bad He3 measurements
+    if(!good_coin_time) continue; 
+
+    if(dy_bg_cut) hdx_bg_data->Fill(T_data->dx);
+    if(good_W2 && good_dy_elas) hdx_data->Fill(T_data->dx);
+    
+  }
   
   dists->SetDataShape(hdx_data);
   dists->SetPShape(hdx_sim_p);
@@ -95,7 +143,7 @@ void Data_sim_compare(TString cfg = "GEN2"){
   
   gStyle->SetOptFit(0);
   
-  hdx_data_plot->SetTitle("Data/Simulation Comparisons " + cfg + ";#Deltax (m);Entries");
+  hdx_data_plot->SetTitle("Data/Simulation Comparisons;#Deltax (m);Entries");
 
   hdx_data_plot->SetMarkerStyle(kFullCircle);
   hdx_total_fit_plot->SetFillColorAlpha(30,0.5);
@@ -131,17 +179,21 @@ void Data_sim_compare(TString cfg = "GEN2"){
   legend->Draw("same");
 
   TPaveText *pt = new TPaveText(.65,.50,.88,.70,"ndc");
+  pt->AddText("Data Background")->SetTextColor(kMagenta);
+  pt->AddText("All QE Cuts");
+  /*
   pt->AddText("Cuts on good tracks");
   pt->AddText("Coincidence Cuts");
   pt->AddText(Form("%g < W^{2} < %g",W2min,W2max));
   if(use_dy_cut) pt->AddText(Form("%g < #Deltay < %g",dymin,dymax));
   pt->AddText(Form("%i Neutrons",(int)hdx_sim_n_plot->GetSumOfWeights()))->SetTextColor(kBlue);
+  */
   pt->SetFillColor(0);
   pt->Draw("same");
 
 
   TString output = "Data_sim_"+cfg+".pdf";
   
-  //c->SaveAs("../../plots/" + output);
+  c->SaveAs("../../plots/" + output);
   
 }

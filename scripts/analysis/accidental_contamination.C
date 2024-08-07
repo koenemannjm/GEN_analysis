@@ -1,7 +1,7 @@
 //////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////
 //   Created by Sean Jeffas, sj9ry@virginia.edu
-//   Last Modified February 25, 2024
+//   Last Modified August 7, 2024
 //
 //
 //   The purpose of this script is to use He3 data to test
@@ -125,7 +125,7 @@ void DrawAccidentals(TVirtualPad *pad, TH1F *hcoin, TGraphErrors *gA, TString cu
   legend->Draw("same");
   
   TPaveText *pt = new TPaveText(0.65,0.47,0.88,0.70,"ndc");
-  pt->AddText("Cuts on good tracks");
+  pt->AddText("Vertex & Preshower Cut");
   pt->AddText(Form("%g < W^{2} < %g",W2min,W2max));
   pt->AddText(Form("|#Deltax| < %g",dxmax));
   pt->AddText(cut_string);
@@ -141,44 +141,70 @@ void DrawAccidentals(TVirtualPad *pad, TH1F *hcoin, TGraphErrors *gA, TString cu
   gA->Draw("AP");
   line0->Draw("same");
   gA->GetXaxis()->SetLimits(time_low,time_hi);
-  gA->GetYaxis()->SetRangeUser(-7,7);
+  gA->GetYaxis()->SetRangeUser(-6,6);
 
 }
 
-void accidental_contamination(TString cfg = "GEN2"){
+void accidental_contamination(TString cfg = "GEN2", double W2mincut = -100, double W2maxcut = -100, double dycut = -100){
 
+  TString kin;
+
+  if(cfg == "GEN3")
+    kin = "Kin3";
+  else if(cfg == "GEN4")
+    kin = "Kin4";
+  else
+    kin = "Kin2";
+  
   gErrorIgnoreLevel = kError; // Ignores all ROOT warnings
   gStyle->SetOptStat(0);
   gStyle->SetOptFit(1);
 
-  getDB(cfg);
-
   TString jmgr_file = "../../config/" + cfg + "_He3.cfg";
   Utilities::KinConf kin_info = Utilities::LoadKinConfig(jmgr_file,1);
 
-  // Set variables for cuts
-  W2min = kin_info.W2min;
-  W2max = kin_info.W2max;
-
-  double dy_bg_min = kin_info.dymin;
-  double dy_bg_max = kin_info.dymax;
-
   vector<double> dx_n = kin_info.dx_n;
-  double Nsigma_dx_n = kin_info.Nsigma_dx_n;
   vector<double> dy_n = kin_info.dy_n;
-  double Nsigma_dy_n = kin_info.Nsigma_dy_n;
   dxmin = dx_n[0] - dx_n[1];
   dxmax = dx_n[0] + dx_n[1];
   dymin = dy_n[0] - dy_n[1];
   dymax = dy_n[0] + dy_n[1];
+  
+  // Set variables for cuts
+  W2min = kin_info.W2min;
+  W2max = kin_info.W2max;
+  if(W2mincut > -10 && W2maxcut > -10 && dycut > -10){
+    W2min = W2mincut;
+    W2max = W2maxcut;
+    dymax = dycut;
+    dymin = -1*dymax;
+    dxmin = dymin;
+    dxmax = dymax;
+  }
+  
+  DBInfo.W2min = W2min;
+  DBInfo.W2max = W2max;
+  DBInfo.dymax = dymax;
+  getDB(cfg);
+
+  double dy_bg_min = kin_info.dymin;
+  double dy_bg_max = kin_info.dymax;
+
+  
 
   int IHWP_Flip = kin_info.IHWP_Flip;
 
-  coin_min = kin_info.coin_time_cut[0] - kin_info.Nsigma_coin_time*kin_info.coin_time_cut[1];
-  coin_max = kin_info.coin_time_cut[0] + kin_info.Nsigma_coin_time*kin_info.coin_time_cut[1];
+  coin_min = kin_info.coin_min;
+  coin_max = kin_info.coin_max;
 
-  coin_bg_low = coin_max + 7*kin_info.coin_time_cut[1];
-  coin_bg_hi = coin_bg_low + 2*kin_info.Nsigma_coin_time*kin_info.coin_time_cut[1];
+  //double coin_avg = (coin_min + coin_max) / 2;
+  double coin_size = coin_max - coin_min;
+
+  coin_bg_low = coin_max + 0.7*coin_size;
+  coin_bg_hi = coin_bg_low + coin_size;
+  
+  //coin_bg_low = coin_max + 7*kin_info.coin_time_cut[1];
+  //coin_bg_hi = coin_bg_low + 2*kin_info.Nsigma_coin_time*kin_info.coin_time_cut[1];
 
   accidental_min = 40;
   accidental_max = 180;
@@ -196,7 +222,7 @@ void accidental_contamination(TString cfg = "GEN2"){
   time_low = 0;
   time_hi = 200;
 
-  double coin_bin_size = 2*kin_info.Nsigma_coin_time*kin_info.coin_time_cut[1];
+  double coin_bin_size = coin_size;
   const int N_points = (int)((time_hi - time_low) / coin_bin_size);
   
   double coin_low[N_points], coin_hi[N_points], coin_mid[N_points];
@@ -226,19 +252,19 @@ void accidental_contamination(TString cfg = "GEN2"){
     hxmax = 3;
   }
 
-  TH1F *hcoin_time_elas = new TH1F("hcoin_time_elas","Elastic Coincidence Time;Coincidence Time (ns);Entries",100,time_low,time_hi);
+  TH1F *hcoin_time_elas = new TH1F("hcoin_time_elas",kin + " Quasielastic Coincidence Time;Coincidence Time (ns);Entries",100,time_low,time_hi);
   TH1F *hcoin_time_inel = new TH1F("hcoin_time_inel","Inelastic Coincidence Time;Coincidence Time (ns);Entries",100,time_low,time_hi);
   TH1F *hdx_inel = new TH1F("hdx_inel","HCal Reconstructed Position;#Deltax (m);Entries",100,hxmin,hxmax);
   TH1F *hdx_inel_acc = new TH1F("hdx_inel_acc","",100,hxmin,hxmax);
   
-
+  
   int nevent = 0;
   int maxevent = T_data->fChain->GetEntries();
   int N_p_tot = 0;
   int N_m_tot = 0;
   int N_p_tot_inel = 0;
   int N_m_tot_inel = 0;
-  int N_bg = 0;
+  int N_acc = 0;
   int N_QE = 0;
   int N_acc_inel = 0;
   int N_inel = 0;
@@ -304,7 +330,7 @@ void accidental_contamination(TString cfg = "GEN2"){
       N_QE++;
 
     if(bad_coin_time)
-      N_bg++;
+      N_acc++;
 
     if(helicity == 1){
       if(!good_coin_time)
@@ -333,22 +359,28 @@ void accidental_contamination(TString cfg = "GEN2"){
   double Delta = N_p_tot - N_m_tot;
   double Sigma = N_p_tot + N_m_tot;
   double A_acc = Delta / Sigma;
-  double f_acc = 1.0*N_bg / N_QE;
+  double f_acc = 1.0*N_acc / N_QE;
   double Aerr = CalcAsymErr(N_p_tot,N_m_tot);
-  double Ferr = CalcFractionErr(N_bg, N_QE);
+  double Ferr = CalcFractionErr(N_acc, N_QE);
 
   double A_acc_inel = 1.0*(N_p_tot_inel - N_m_tot_inel) / (N_p_tot_inel + N_m_tot_inel);
   double Aerr_inel = CalcAsymErr(N_p_tot_inel,N_m_tot_inel);
   double f_acc_inel = 1.0*N_acc_inel / N_inel;
   double Ferr_inel = CalcFractionErr(N_acc_inel, N_inel);
 
+  DBInfo.AccidentalAsymmetry = A_acc;
+  DBInfo.AccidentalAsymmetryErr = Aerr;
+  DBInfo.AccidentalFraction = f_acc;
+  DBInfo.AccidentalFractionErr = Ferr;
+  
+  DB_SetCorrections(DBInfo);
+  
   cout<<"--------- Elastic Accidental Info ---------"<<endl;
+  cout<<"Accidental Np = "<<N_p_tot<<"   and Nm = "<<N_m_tot<<endl;
+  cout<<"Accidental N = "<<N_acc<<endl;
   cout<<"Accidental Asymmetry = "<<A_acc<<"  Aerr = "<<Aerr<<endl;
   cout<<"Accidental Fraction = "<<f_acc<<"  Ferr = "<<Ferr<<endl;
-  cout<<endl;
-  cout<<"--------- Inelastic Accidental Info ---------"<<endl;
-  cout<<"Accidental Asymmetry = "<<A_acc_inel<<"  Aerr = "<<Aerr_inel<<endl;
-  cout<<"Accidental Fraction = "<<f_acc_inel<<"  Ferr = "<<Ferr_inel<<endl;
+  
 
   // Make all the graphs
   TGraphErrors *gA = new TGraphErrors(N_points,coin_mid,A_array,0,A_err_array);

@@ -1,4 +1,14 @@
-
+//////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////
+//   Created by Sean Jeffas, sj9ry@virginia.edu
+//   Last Modified August 7, 2024
+//
+//
+//   The purpose of this script is to calculate the nitrogen
+//   correction.
+//
+//////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////
 
 #include "../../include/gen-ana.h"
 
@@ -26,6 +36,27 @@ vector <Double_t> ys_cent;
 double foil_cut = 0.021; //m
 
 
+DBparse::DBInfo DBInfo;
+
+// Load database files
+void getDB(TString cfg){
+  
+  cout<<"Attempting to load DB File"<<endl;
+  cout<<"---------------------------------------------------------------"<<endl;
+
+   vector<DBparse::DBrequest> request = {
+     {"Asymmetry Correction","All asymmetry correction parameters",1}
+  };
+
+  DBInfo.cfg = cfg;
+  DBInfo.var_req = request;
+
+  DB_load(DBInfo);
+
+  cout<<"---------------------------------------------------------------"<<endl;
+
+}
+
 void DrawLines(TVirtualPad *pad, double xmin, double xmax){
 
   pad->Update();
@@ -41,7 +72,7 @@ void DrawLines(TVirtualPad *pad, double xmin, double xmax){
 
 }
 
-void Nitrogen_contamination(TString cfg = "GEN2"){
+void Nitrogen_contamination(TString cfg = "GEN2", double W2mincut = -100, double W2maxcut = -100, double dycut = -100){
 
   gStyle->SetOptStat(0);
   
@@ -63,6 +94,7 @@ void Nitrogen_contamination(TString cfg = "GEN2"){
   }
   
   double rho_N2 = 0.15; // in amagat
+  double rho_N2_amagat = 0.15; // in amagat
   double rho_C = 2266;  // mg/cm3
   double rho_air = 1015 * 100; // Pa from JLab website
 
@@ -83,7 +115,7 @@ void Nitrogen_contamination(TString cfg = "GEN2"){
   //These are in units of mg / cm2
   double m2_N2 = rho_N2 * l_cut;
   double m2_C = ( rho_C * l_C * nfoil ) + ( rho_air * l_cut );
-  
+
   TString jmgr_He3 = "../../config/" + cfg + "_He3.cfg";
   TString jmgr_optics = "../../config/" + cfg + "_optics.cfg";
 
@@ -91,24 +123,39 @@ void Nitrogen_contamination(TString cfg = "GEN2"){
   Utilities::KinConf kin_optics = Utilities::LoadKinConfig(jmgr_optics,1);
   analyzed_tree *T_He3 = Utilities::LoadAnalyzedRootFiles(kin_He3,1,0);
   analyzed_tree *T_optics = Utilities::LoadAnalyzedRootFiles(kin_optics,1,0);
-
+  
   double W2min = kin_He3.W2min;
   double W2max = kin_He3.W2max;
 
   double dy_bg_min = kin_He3.dymin;
   double dy_bg_max = kin_He3.dymax;
   vector<double> dx_n = kin_He3.dx_n;
-  double Nsigma_dx_n = kin_He3.Nsigma_dx_n;
   vector<double> dy_n = kin_He3.dy_n;
-  double Nsigma_dy_n = kin_He3.Nsigma_dy_n;
   double dxmin = dx_n[0] - dx_n[1];
   double dxmax = dx_n[0] + dx_n[1];
   double dymin = dy_n[0] - dy_n[1];
   double dymax = dy_n[0] + dy_n[1];
-  double coin_min = kin_He3.coin_time_cut[0] - kin_He3.Nsigma_coin_time*kin_He3.coin_time_cut[1];
-  double coin_max = kin_He3.coin_time_cut[0] + kin_He3.Nsigma_coin_time*kin_He3.coin_time_cut[1];
-  double coin_bg_low = coin_max + 7*kin_He3.coin_time_cut[1];
-  double coin_bg_hi = coin_bg_low + 2*kin_He3.Nsigma_coin_time*kin_He3.coin_time_cut[1];
+
+  // Set variables for cuts
+  if(W2mincut > -10 && W2maxcut > -10 && dycut > -10){
+    W2min = W2mincut;
+    W2max = W2maxcut;
+    dymax = dycut;
+    dymin = -1*dymax;
+    dxmin = dymin;
+    dxmax = dymax;
+  }
+
+  DBInfo.W2min = W2min;
+  DBInfo.W2max = W2max;
+  DBInfo.dymax = dymax;
+  getDB(cfg);
+
+  double coin_min = kin_He3.coin_min;
+  double coin_max = kin_He3.coin_max;
+  double coin_size = coin_max - coin_min;
+  double coin_bg_low = coin_max + 0.7*coin_size;
+  double coin_bg_hi = coin_bg_low + coin_size;
   
   double N_C = 0;
   double N_C_acc = 0;
@@ -138,16 +185,16 @@ void Nitrogen_contamination(TString cfg = "GEN2"){
     hxmax = 3;
   }
 
-  TH1F *hvz_optics = new TH1F("hvz_optics",cfg + " Optics Data;vz (m)",100,-0.3,0.3);
-  TH1F *hvz_He3 = new TH1F("hvz_He3",cfg + " He3 Data;vz (m)",100,-0.3,0.3);
-  TH2F *hdxdy_optics = new TH2F("hdxdy_optics",cfg + " Optics HCal;#Deltay;#Deltax",150,-2,2,150,-6,6);
-  TH2F *hdxdy_He3 = new TH2F("hdxdy_He3",cfg + " He3 HCal;#Deltay;#Deltax",150,-2,2,150,-6,6);
-  TH1F *hW2_optics = new TH1F("hW2_optics",cfg + " Optics W2;W^{2} (GeV)",100,-1,5);
-  TH1F *hW2_He3 = new TH1F("hW2_He3",cfg + " He3 W2;W^{2} (GeV)",100,-1,5);
-  TH1F *hcoin_optics = new TH1F("hcoin_optics",cfg + " Optics Coincidence;Time (ns)",100,0,200);
-  TH1F *hcoin_He3 = new TH1F("hcoin_He3",cfg + " He3 Coincidence;Time (ns)",100,0,200);
-  TH2F *hxysieve_optics = new TH2F("hxysieve_optics",cfg + " Optics Sieve;Sieve Y (m);Sieve X (m)",100,-0.15,0.15,100,-0.35,0.35);
-  TH2F *hxysieve_He3 = new TH2F("hxysieve_He3",cfg + " He3 Sieve;Sieve Y (m);Sieve X (m)",100,-0.15,0.15,100,-0.35,0.35);
+  TH1F *hvz_optics = new TH1F("hvz_optics","Carbon Data;z_{tg} (m)",100,-0.3,0.3);
+  TH1F *hvz_He3 = new TH1F("hvz_He3","He3 Data;z_{tg} (m)",100,-0.3,0.3);
+  TH2F *hdxdy_optics = new TH2F("hdxdy_optics","Carbon HCal;#Deltay;#Deltax",150,-2,2,150,-6,6);
+  TH2F *hdxdy_He3 = new TH2F("hdxdy_He3","He3 HCal;#Deltay;#Deltax",150,-2,2,150,-6,6);
+  TH1F *hW2_optics = new TH1F("hW2_optics","Carbon W2;W^{2} (GeV)",100,-1,5);
+  TH1F *hW2_He3 = new TH1F("hW2_He3","He3 W2;W^{2} (GeV)",100,-1,5);
+  TH1F *hcoin_optics = new TH1F("hcoin_optics","Carbon Coincidence;Time (ns)",100,0,200);
+  TH1F *hcoin_He3 = new TH1F("hcoin_He3","He3 Coincidence;Time (ns)",100,0,200);
+  TH2F *hxysieve_optics = new TH2F("hxysieve_optics","Carbon Sieve;Sieve Y (m);Sieve X (m)",100,-0.15,0.15,100,-0.35,0.35);
+  TH2F *hxysieve_He3 = new TH2F("hxysieve_He3","He3 Sieve;Sieve Y (m);Sieve X (m)",100,-0.15,0.15,100,-0.35,0.35);
   TH1F *hdx = new TH1F("hdx","",100,hxmin,hxmax);
 
   while(nevent < maxevent){
@@ -290,7 +337,29 @@ void Nitrogen_contamination(TString cfg = "GEN2"){
 
   double F_bg = A * ( 1.0*(N_C_bg - N_C_bg_acc) / (N_QE_bg - N_QE_bg_acc) );
   double F_bg_err = A*sqrt( (N_C + N_C_acc) / pow(N_QE - N_QE_acc,2) + pow(N_C - N_C_acc,2)*(N_QE + N_QE_acc) / pow(N_QE - N_QE_acc,4));
+
+  DBInfo.NitrogenFraction = F;
+  DBInfo.NitrogenFractionErr = F_err;
   
+  DB_SetCorrections(DBInfo);
+  
+  cout<<"--------------- Nitrogen Info -----------"<<endl;
+  cout<<"Air Length (cm) = "<<l_cut<<endl;
+  cout<<"Carbon Length (cm) = "<<l_C<<endl;
+  cout<<"Density N2 (amagat) = "<<rho_N2_amagat<<endl;
+  cout<<"Density C (mg/cm^3) = "<<rho_C<<endl;
+  cout<<"Density air (mg/cm^3) = "<<rho_air<<endl;
+  cout<<"-----------------------------------------"<<endl;
+  cout<<"Charge He3 (C) = "<<charge_He3<<endl;
+  cout<<"Charge Carbon (C) = "<<charge_C<<endl;
+  cout<<"N2 Mass Density (mg/cm2) = "<<m2_N2<<endl;
+  cout<<"Carbon Mass Density (mg/cm2) = "<<m2_C<<endl;
+  cout<<"-----------------------------------------"<<endl;
+  cout<<"N Carbon = "<<N_C<<endl;
+  cout<<"N Carbon Acc = "<<N_C_acc<<endl;
+  cout<<"N He3 = "<<N_QE<<endl;
+  cout<<"N He3 Acc = "<<N_QE_acc<<endl;
+  cout<<"-----------------------------------------"<<endl;
   cout<<"Nitrogen Fraction = "<<F<<" &  Fraction Err = "<<F_err<<endl;
 
 

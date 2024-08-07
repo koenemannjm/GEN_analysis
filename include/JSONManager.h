@@ -2,16 +2,14 @@
 #define UTIL_DF_JSON_MANAGER_HH
 
 // A wrapper type class to streamline handling of JSON file data 
-// based on the include file: 
-// /u/site/12gev_phys/2.5/Linux_CentOS7.7.1908-gcc9.2.0/root/6.24.06/include/nlohmann/json.hpp
-// since this is in ROOT already, don't need to explicitly include it here
+
 
 #include <cstdlib>
 #include <iostream>
 #include <fstream>
 #include <string>
 
-#include "/u/site/12gev_phys/2.5/Linux_CentOS7.7.1908-gcc9.2.0/root/6.24.06/include/nlohmann/json.hpp"
+#include "/u/group/halla/apps/ROOT/6.30-04/gcc12/RelWithDebInfo/include/nlohmann/json.hpp"
 
 enum dataType{ 
    kINT,

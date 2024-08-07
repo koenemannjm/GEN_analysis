@@ -3,7 +3,7 @@
 
 // These are variables found in the analysis result
 double u_n = -1.9130427;
-double P_n = 0.86;    //Set for now, but check later
+double P_n = 0.96;    //Set for now, but check later
 double P_p = -0.03;    //Set for now, but check later
 double P_beam_avg = 0;
 double P_beam_avg_err = 0;
@@ -22,9 +22,19 @@ double epsilon_avg = 0;
 double Px_avg = 0;
 double Pz_avg = 0;
 int count_avg_exp = 0;
-double GEGM;
-double GEGM_stat_err;
-double GEGM_sys_err;
+double A_quad;
+double B_quad;
+double C_quad;
+double GEGMp;
+double GEGMp_err;
+double GEGMn;
+double GEGMn_stat_err;
+double GEGMn_sys_err;
+double GEn;
+double GEn_stat_err;
+double GEn_sys_err;
+double GMn;
+double GMn_err;
 
 TVector3 TargetPolDirection;
 
@@ -56,11 +66,10 @@ double CalcFractionErr(double Nx, double N){
 
 
 void UpdateAverageKinematics(analyzed_tree *T);
-double GetGEGMFromTheory(bool is_neutron, double Q2);
-double GetAFromQ2(bool is_neutron, double Q2);
+void GetGEGMFromTheory(bool is_neutron, double Q2, double &R, double &R_err);
+void GetAFromQ2(bool is_neutron, double Q2, double &A, double &A_err);
 double GetGEGMFromA(double A, double A_err);
 void GetGEGMFromA_old(double A);
-
 
 double GetAFromGEGM_theory(double GEGM,double etheta, double Q2);
 
@@ -128,13 +137,16 @@ class analyzed_info {
   struct run_info {
     int N_raw_p;
     int N_raw_m;
+    double P_He3_sum;  // Used to avg for He3
+    double P_He3_err_sum;  // Used to avg for He3
     double P_He3;
+    double P_He3_err;
     double P_beam[2];
     int count_avg;
     bool run_init;
     
     //Starting values
-  run_info() : N_raw_p(0), N_raw_m(0), P_He3(0), count_avg(0), run_init(false) {}
+    run_info() : N_raw_p(0), N_raw_m(0), P_He3_sum(0), P_He3_err_sum(0), P_He3(0), count_avg(0), run_init(false) {}
   };
 
   std::map<int, run_info> Asym_runs;
@@ -145,8 +157,13 @@ class analyzed_info {
   } 
   void UpdatePolHe3(int key, double Pol){
     Pol /= 100; //convert to decimal;
+    double err = Pol*0.05;  // Hunter said to use 5% error for now
+    Asym_runs[key].P_He3_sum += Pol;
+    Asym_runs[key].P_He3_err_sum += err;
     Asym_runs[key].count_avg++;
-    Asym_runs[key].P_He3 += (Pol - Asym_runs[key].P_He3) / Asym_runs[key].count_avg;
+
+    Asym_runs[key].P_He3 = Asym_runs[key].P_He3_sum / Asym_runs[key].count_avg;
+    Asym_runs[key].P_He3_err = Asym_runs[key].P_He3_err_sum / Asym_runs[key].count_avg;
   }
   void SetAvgPol();
   void SetPolBeam(int key, TDatime *evtime, vector<vector<TDatime*>> PolTime, vector<vector<double>> PolVal);
@@ -182,6 +199,7 @@ class analyzed_info {
   double A_raw;
   double A_acc = -1000;
   double A_p;
+  double A_p_phys;
   double A_pion = -1000;
   double A_in = -1000;;
   double A_FSI;
@@ -200,7 +218,9 @@ class analyzed_info {
   double A_raw_err;
   double A_acc_err = -1000;
   double A_in_err = -1000;
+  double A_FSI_err;
   double A_p_err;
+  double A_p_phys_err;
   double A_pion_err = -1000;
   double A_phys_stat_err;
   double A_phys_sys_err;
@@ -213,9 +233,6 @@ class analyzed_info {
   double f_pion_err = -1000;
   double f_in_err = -1000;
   double f_FSI_err;
-
-  // Form Factor results
-  double GEGM;
 
 
   void SetNProton(int N){ 

@@ -131,8 +131,11 @@ namespace Utilities {
       kin_info.IHWP_Flip = jmgr->GetValueFromKey<int>("IHWP_Flip");
       kin_info.dymin = jmgr->GetValueFromKey<double>("dymin");
       kin_info.dymax = jmgr->GetValueFromKey<double>("dymax");
-      jmgr->GetVectorFromKey<double>("coin_time", kin_info.coin_time_cut);
-      kin_info.Nsigma_coin_time = jmgr->GetValueFromKey<double>("Nsigma_coin_time");
+
+      vector<double> coin_time_cut;
+      jmgr->GetVectorFromKey<double>("coin_time", coin_time_cut);
+      kin_info.coin_min = coin_time_cut[0];
+      kin_info.coin_max = coin_time_cut[1];
       jmgr->GetVectorFromKey<int>("runnums",kin_info.runnums);
       kin_info.nruns = jmgr->GetValueFromKey<int>("Nruns_to_ana");
     }
@@ -209,12 +212,12 @@ namespace Utilities {
   }
 
 
-  analyzed_tree *LoadAnalyzedRootFiles(KinConf kin_info, bool is_data, bool is_reduced){
+  analyzed_tree *LoadAnalyzedRootFiles(KinConf kin_info, bool is_data, bool is_reduced, bool is_pion = false){
     
     TChain *T = new TChain("Tout");
     
     TString file_dir = "/w/halla-scshelf2102/sbs/jeffas/GEN_analysis/scripts/outfiles/good_files/";
-    //TString file_dir = "/lustre19/expphy/volatile/halla/sbs/jeffas/GEN_root/pion_test/";
+    if(is_pion) file_dir = "/lustre19/expphy/volatile/halla/sbs/jeffas/GEN_root/pion_test/";
     TString root_file;
     if(!is_data)
       root_file = "QE_sim_" + kin_info.conf + "_sbs" + kin_info.sbsmag + "p_nucleon_" + kin_info.Ntype + "_model" + kin_info.model + ".root";

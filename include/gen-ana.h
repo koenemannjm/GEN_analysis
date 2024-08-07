@@ -16,7 +16,8 @@
 #include "../src/ExpConstants.cpp"    // namespace expconst & class SBSconfig
 #include "../src/KinematicVar.cpp"    // namespace kine
 #include "../src/DBparse.cpp"         // namespace DBparse
-#include "../src/Analysis.cpp"         
+#include "../src/Analysis.cpp"
+#include "../src/FF_param.cpp"
 
 
 
